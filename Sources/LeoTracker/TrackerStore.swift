@@ -124,7 +124,13 @@ final class TrackerStore: ObservableObject {
     private func save(data: Data, name: String, type: String) {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = name
-        guard let contentType = UTType(filenameExtension: type) else {
+        let contentType: UTType
+        if type == "xlsx" {
+            // This UTI is not always registered until a spreadsheet app is installed.
+            contentType = UTType(filenameExtension: type) ?? UTType(importedAs: "org.openxmlformats.spreadsheetml.sheet")
+        } else if let resolvedType = UTType(filenameExtension: type) {
+            contentType = resolvedType
+        } else {
             errorMessage = "Unknown export format."
             return
         }
