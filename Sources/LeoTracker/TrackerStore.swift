@@ -97,7 +97,6 @@ final class TrackerStore: ObservableObject {
     }
 
     func exportCSV() { save(data: Data(("\u{FEFF}" + ExportService.csv(entries: entries)).utf8), name: "leo-report.csv", type: "csv") }
-    func exportExcel() { save(data: ExportService.xlsx(entries: entries), name: "leo-report.xlsx", type: "xlsx") }
 
     private func tick() {
         now = Date()
@@ -124,13 +123,7 @@ final class TrackerStore: ObservableObject {
     private func save(data: Data, name: String, type: String) {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = name
-        let contentType: UTType
-        if type == "xlsx" {
-            // This UTI is not always registered until a spreadsheet app is installed.
-            contentType = UTType(filenameExtension: type) ?? UTType(importedAs: "org.openxmlformats.spreadsheetml.sheet")
-        } else if let resolvedType = UTType(filenameExtension: type) {
-            contentType = resolvedType
-        } else {
+        guard let contentType = UTType(filenameExtension: type) else {
             errorMessage = "Unknown export format."
             return
         }

@@ -111,7 +111,6 @@ struct ContentView: View {
                     Spacer()
                     Menu("Export", systemImage: "square.and.arrow.up") {
                         Button("CSV") { store.exportCSV() }
-                        Button("Excel (.xlsx)") { store.exportExcel() }
                     }.buttonStyle(.borderedProminent).tint(LeoTheme.green)
                 }
                 Picker("Period", selection: $store.range) { ForEach(ReportRange.allCases) { Text($0.rawValue).tag($0) } }
