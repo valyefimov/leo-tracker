@@ -10,6 +10,7 @@ let package = Package(
         .executableTarget(
             name: "LeoTracker",
             dependencies: ["CSQLite"],
+            resources: [.process("Resources")],
             linkerSettings: [.linkedLibrary("sqlite3")]
         ),
         .testTarget(name: "LeoTrackerTests", dependencies: ["LeoTracker"])

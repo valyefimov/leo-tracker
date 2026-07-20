@@ -10,11 +10,14 @@ Native macOS time tracker built with SwiftUI. Sessions are stored locally in SQL
 
 ## Run with Xcode
 
+Use Xcode if you want to run Leo Tracker like a normal Mac app:
+
 1. Open Xcode.
 2. Choose **File → Open** and open `Package.swift` from the project root.
 3. Wait for Xcode to index the Swift package.
-4. In the top toolbar, select the **LeoTracker** scheme and **My Mac** as the run destination.
-5. Press **Run** or use `⌘R`.
+4. Select the **LeoTracker** scheme.
+5. Select **My Mac** as the run destination.
+6. Press **Run** or use `⌘R`.
 
 On first launch, SQLite automatically creates the local database.
 
@@ -39,6 +42,8 @@ Check the environment and run the app:
 swift --version
 swift run LeoTracker
 ```
+
+This launches the app from the terminal, but it does not install Leo Tracker into `/Applications`, Launchpad, or Spotlight.
 
 Run tests with:
 
