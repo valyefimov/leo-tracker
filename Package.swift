@@ -6,7 +6,7 @@ let package = Package(
     platforms: [.macOS(.v14)],
     products: [.executable(name: "LeoTracker", targets: ["LeoTracker"])],
     targets: [
-        .systemLibrary(name: "CSQLite", pkgConfig: "sqlite3"),
+        .systemLibrary(name: "CSQLite"),
         .executableTarget(
             name: "LeoTracker",
             dependencies: ["CSQLite"],
