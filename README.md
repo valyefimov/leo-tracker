@@ -45,6 +45,17 @@ swift run LeoTracker
 
 This launches the app from the terminal, but it does not install Leo Tracker into `/Applications`, Launchpad, or Spotlight.
 
+## Build a normal macOS app
+
+To create a clickable `.app` bundle with a bundle identifier:
+
+```sh
+bash scripts/build-app.sh
+open dist/LeoTracker.app
+```
+
+The generated app is written to `dist/LeoTracker.app`. You can copy it to `/Applications` if you want it to appear with your other macOS apps.
+
 Run tests with:
 
 ```sh
