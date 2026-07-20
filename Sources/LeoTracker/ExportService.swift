@@ -19,20 +19,17 @@ enum ExportService {
 
     /// A genuine XLSX workbook (ZIP + OOXML), so Excel opens it without the XML/extension warning.
     static func xlsx(entries: [TimeEntry]) -> Data {
-        let rows = entries.map { entry in
-            [
-                stringCell(dateOnly(entry.startedAt)), stringCell(entry.project), stringCell(entry.task),
-                stringCell(dateTime(entry.startedAt)), stringCell(entry.endedAt.map(dateTime) ?? ""),
-                numberCell(exportUnits(entry.duration)), stringCell(entry.duration.clockText)
-            ].joined()
+        let header = stringRow(["Date", "Project", "Task", "Started", "Ended", "Units (100 = 1 hour)", "Duration"], number: 1)
+        let rows = entries.enumerated().map { index, entry in
+            dataRow(entry, number: index + 2)
         }.joined(separator: "\n")
-        let header = ["Date", "Project", "Task", "Started", "Ended", "Units (100 = 1 hour)", "Duration"].map(stringCell).joined()
+        let finalRow = max(1, entries.count + 1)
         let sheet = """
         <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-        <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>
+        <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:G\(finalRow)"/><sheetViews><sheetView workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="15"/><cols><col min="1" max="1" width="14" customWidth="1"/><col min="2" max="3" width="24" customWidth="1"/><col min="4" max="5" width="22" customWidth="1"/><col min="6" max="6" width="23" customWidth="1"/><col min="7" max="7" width="14" customWidth="1"/></cols><sheetData>
         <row r="1">\(header)</row>
-        \(entries.enumerated().map { "<row r=\($0.offset + 2)>\(rows.split(separator: "\n")[$0.offset])</row>" }.joined(separator: "\n"))
-        </sheetData><autoFilter ref="A1:G\(max(1, entries.count + 1))"/><cols><col min="1" max="1" width="14" customWidth="1"/><col min="2" max="3" width="24" customWidth="1"/><col min="4" max="5" width="22" customWidth="1"/><col min="6" max="6" width="23" customWidth="1"/><col min="7" max="7" width="14" customWidth="1"/></cols></worksheet>
+        \(rows)
+        </sheetData><autoFilter ref="A1:G\(finalRow)"/></worksheet>
         """
         let files: [(String, String)] = [
             ("[Content_Types].xml", "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/><Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/></Types>"),
@@ -53,8 +50,20 @@ enum ExportService {
         let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX"); formatter.timeZone = .current; formatter.dateFormat = format
         return formatter.string(from: date)
     }
-    private static func numberCell(_ value: Int) -> String { "<c t=\"n\"><v>\(value)</v></c>" }
-    private static func stringCell(_ value: String) -> String { "<c t=\"inlineStr\"><is><t>\(xml(value))</t></is></c>" }
+    private static func dataRow(_ entry: TimeEntry, number: Int) -> String {
+        let values = [dateOnly(entry.startedAt), entry.project, entry.task, dateTime(entry.startedAt), entry.endedAt.map(dateTime) ?? "", entry.duration.clockText]
+        let cells = values.enumerated().map { stringCell($0.element, reference: cellReference(column: $0.offset, row: number)) }
+        let unitCell = numberCell(exportUnits(entry.duration), reference: cellReference(column: 5, row: number))
+        return "<row r=\(number)>\(cells.prefix(5).joined())\(unitCell)\(cells[5])</row>"
+    }
+    private static func stringRow(_ values: [String], number: Int) -> String {
+        values.enumerated().map { stringCell($0.element, reference: cellReference(column: $0.offset, row: number)) }.joined()
+    }
+    private static func cellReference(column: Int, row: Int) -> String {
+        "\(Character(UnicodeScalar(65 + column)!))\(row)"
+    }
+    private static func numberCell(_ value: Int, reference: String) -> String { "<c r=\"\(reference)\" t=\"n\"><v>\(value)</v></c>" }
+    private static func stringCell(_ value: String, reference: String) -> String { "<c r=\"\(reference)\" t=\"inlineStr\"><is><t>\(xml(value))</t></is></c>" }
     private static func escape(_ value: String) -> String { "\"\(value.replacingOccurrences(of: "\"", with: "\"\""))\"" }
     private static func xml(_ value: String) -> String { value.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;").replacingOccurrences(of: ">", with: "&gt;").replacingOccurrences(of: "\"", with: "&quot;") }
 }
