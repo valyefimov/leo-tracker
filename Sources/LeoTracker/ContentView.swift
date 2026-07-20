@@ -2,7 +2,10 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var store = TrackerStore()
-    @State private var selection = "Трекер"
+    @State private var selection = "Tracker"
+    @State private var showingNewProject = false
+    @State private var newProjectName = ""
+    @State private var entryToDelete: TimeEntry?
 
     var body: some View {
         NavigationSplitView {
@@ -18,16 +21,16 @@ struct ContentView: View {
                     }
                 }.padding(.bottom, 18)
 
-                navItem("Трекер", icon: "stopwatch.fill")
-                navItem("Отчёты", icon: "chart.bar.xaxis")
+                navItem("Tracker", icon: "stopwatch.fill")
+                navItem("Reports", icon: "chart.bar.xaxis")
                 Spacer()
-                Label("Данные хранятся локально", systemImage: "lock.fill")
+                Label("Data stays on this Mac", systemImage: "lock.fill")
                     .font(.caption).foregroundStyle(.secondary).padding(8)
             }
             .padding(18)
             .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 240)
         } detail: {
-            Group { selection == "Трекер" ? AnyView(tracker) : AnyView(reports) }
+            Group { selection == "Tracker" ? AnyView(tracker) : AnyView(reports) }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color(nsColor: .windowBackgroundColor))
         }
@@ -41,20 +44,31 @@ struct ContentView: View {
                     .onTapGesture { store.autoStopMessage = nil }
             }
         }
+        .sheet(isPresented: $showingNewProject) {
+            VStack(alignment: .leading, spacing: 18) {
+                Text("New Project").font(.title2.bold())
+                TextField("Project name", text: $newProjectName).textFieldStyle(.roundedBorder).onSubmit { createProject() }
+                HStack { Spacer(); Button("Cancel") { showingNewProject = false }; Button("Create") { createProject() }.buttonStyle(.borderedProminent).tint(LeoTheme.green) }
+            }.padding(24).frame(width: 360)
+        }
+        .alert("Delete session?", isPresented: Binding(get: { entryToDelete != nil }, set: { if !$0 { entryToDelete = nil } })) {
+            Button("Delete", role: .destructive) { if let entryToDelete { store.delete(entry: entryToDelete) }; entryToDelete = nil }
+            Button("Cancel", role: .cancel) { entryToDelete = nil }
+        } message: { Text("This session will be permanently removed.") }
     }
 
     private var tracker: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("Трекер времени").font(.system(size: 30, weight: .bold, design: .rounded))
-                    Text("Сфокусируйтесь на задаче — остальное Leo запишет сам.").foregroundStyle(.secondary)
+                    Text("Time Tracker").font(.system(size: 30, weight: .bold, design: .rounded))
+                    Text("Focus on the task — Leo records the rest.").foregroundStyle(.secondary)
                 }
                 Card {
                     VStack(spacing: 22) {
                         HStack(alignment: .top) {
                             VStack(alignment: .leading, spacing: 7) {
-                                Label(store.isTracking ? "СЕЙЧАС В РАБОТЕ" : "ГОТОВ К РАБОТЕ", systemImage: store.isTracking ? "circle.fill" : "circle")
+                                Label(store.isTracking ? "TRACKING NOW" : "READY TO TRACK", systemImage: store.isTracking ? "circle.fill" : "circle")
                                     .font(.caption.bold()).foregroundStyle(store.isTracking ? LeoTheme.green : .secondary)
                                 Text(store.elapsed.clockText).font(.system(size: 50, weight: .semibold, design: .rounded)).monospacedDigit()
                             }
@@ -63,16 +77,21 @@ struct ContentView: View {
                                 Image(systemName: store.isTracking ? "stop.fill" : "play.fill")
                                     .font(.title2.bold()).frame(width: 58, height: 58)
                                     .foregroundStyle(.white).background(store.isTracking ? Color.red : LeoTheme.green, in: Circle())
-                            }.buttonStyle(.plain).help(store.isTracking ? "Остановить" : "Запустить")
+                            }.buttonStyle(.plain).help(store.isTracking ? "Stop" : "Start")
                         }
-                        TextField("Над чем вы работаете?", text: $store.task, axis: .vertical)
+                        HStack(spacing: 10) {
+                            Picker("Project", selection: $store.selectedProjectID) { ForEach(store.projects) { Text($0.name).tag(Optional($0.id)) } }
+                                .labelsHidden().frame(maxWidth: 230).disabled(store.isTracking)
+                            Button("New Project", systemImage: "plus") { newProjectName = ""; showingNewProject = true }.disabled(store.isTracking)
+                        }
+                        TextField("What are you working on?", text: $store.task, axis: .vertical)
                             .textFieldStyle(.plain).font(.title3).padding(15)
                             .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 12))
                             .disabled(store.isTracking).onSubmit { if !store.isTracking { store.start() } }
                         HStack {
-                            Label("Автостоп через 5 минут бездействия", systemImage: "moon.zzz")
+                            Label("Auto-stops after 5 minutes inactive", systemImage: "moon.zzz")
                             Spacer()
-                            Text("Сегодня: \(store.entries.filter { Calendar.current.isDateInToday($0.startedAt) }.reduce(0) { $0 + $1.duration }.shortText)").fontWeight(.semibold)
+                            Text("Today: \(store.entries.filter { Calendar.current.isDateInToday($0.startedAt) }.reduce(0) { $0 + $1.duration }.shortText)").fontWeight(.semibold)
                         }.font(.callout).foregroundStyle(.secondary)
                     }
                 }
@@ -86,21 +105,21 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 22) {
                 HStack {
                     VStack(alignment: .leading, spacing: 5) {
-                        Text("Отчёты").font(.system(size: 30, weight: .bold, design: .rounded))
-                        Text("Анализируйте время и выгружайте данные.").foregroundStyle(.secondary)
+                        Text("Reports").font(.system(size: 30, weight: .bold, design: .rounded))
+                        Text("Review time and export data for billing.").foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Menu("Экспорт", systemImage: "square.and.arrow.up") {
+                    Menu("Export", systemImage: "square.and.arrow.up") {
                         Button("CSV") { store.exportCSV() }
-                        Button("Excel (.xls)") { store.exportExcel() }
+                        Button("Excel (.xlsx)") { store.exportExcel() }
                     }.buttonStyle(.borderedProminent).tint(LeoTheme.green)
                 }
-                Picker("Период", selection: $store.range) { ForEach(ReportRange.allCases) { Text($0.rawValue).tag($0) } }
+                Picker("Period", selection: $store.range) { ForEach(ReportRange.allCases) { Text($0.rawValue).tag($0) } }
                     .pickerStyle(.segmented).frame(maxWidth: 520)
                 HStack(spacing: 16) {
-                    metric("Всего времени", value: store.totalDuration.shortText, icon: "clock.fill")
-                    metric("Сессий", value: "\(store.entries.count)", icon: "checkmark.circle.fill")
-                    metric("В среднем", value: (store.entries.isEmpty ? 0 : store.totalDuration / Double(store.entries.count)).shortText, icon: "chart.line.uptrend.xyaxis")
+                    metric("Total time", value: store.totalDuration.shortText, icon: "clock.fill")
+                    metric("Sessions", value: "\(store.entries.count)", icon: "checkmark.circle.fill")
+                    metric("Average", value: (store.entries.isEmpty ? 0 : store.totalDuration / Double(store.entries.count)).shortText, icon: "chart.line.uptrend.xyaxis")
                 }
                 latestEntries
             }.padding(34).frame(maxWidth: 980)
@@ -110,9 +129,9 @@ struct ContentView: View {
     private var latestEntries: some View {
         Card {
             VStack(alignment: .leading, spacing: 0) {
-                Text("Сессии").font(.headline).padding(.bottom, 12)
+                Text("Sessions").font(.headline).padding(.bottom, 12)
                 if store.entries.isEmpty {
-                    ContentUnavailableView("Пока нет записей", systemImage: "clock.badge.questionmark", description: Text("Запустите первую рабочую сессию."))
+                    ContentUnavailableView("No sessions yet", systemImage: "clock.badge.questionmark", description: Text("Start your first work session."))
                         .frame(maxWidth: .infinity).padding(.vertical, 24)
                 } else {
                     ForEach(Array(store.entries.prefix(20).enumerated()), id: \.element.id) { index, entry in
@@ -121,10 +140,11 @@ struct ContentView: View {
                             Circle().fill(entry.endedAt == nil ? LeoTheme.green : LeoTheme.green.opacity(0.16)).frame(width: 10, height: 10)
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(entry.task).fontWeight(.medium).lineLimit(1)
-                                Text(entry.startedAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
+                                Text("\(entry.project) · \(entry.startedAt.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
                             Text(entry.duration.shortText).font(.system(.body, design: .rounded).weight(.semibold)).monospacedDigit()
+                            if entry.endedAt != nil { Button("Delete", systemImage: "trash", role: .destructive) { entryToDelete = entry }.labelStyle(.iconOnly).buttonStyle(.borderless).help("Delete session") }
                         }.padding(.vertical, 12)
                     }
                 }
@@ -142,5 +162,10 @@ struct ContentView: View {
 
     private func metric(_ title: String, value: String, icon: String) -> some View {
         Card { HStack { Image(systemName: icon).foregroundStyle(LeoTheme.green).font(.title2); VStack(alignment: .leading) { Text(title).font(.caption).foregroundStyle(.secondary); Text(value).font(.title2.bold()).monospacedDigit() }; Spacer() } }.frame(maxWidth: .infinity)
+    }
+
+    private func createProject() {
+        store.createProject(named: newProjectName)
+        showingNewProject = false
     }
 }

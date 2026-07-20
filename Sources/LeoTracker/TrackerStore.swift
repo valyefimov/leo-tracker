@@ -8,6 +8,8 @@ import UniformTypeIdentifiers
 final class TrackerStore: ObservableObject {
     @Published var task = ""
     @Published private(set) var entries: [TimeEntry] = []
+    @Published private(set) var projects: [Project] = []
+    @Published var selectedProjectID: Int64?
     @Published private(set) var activeEntry: TimeEntry?
     @Published private(set) var now = Date()
     @Published var range: ReportRange = .week { didSet { reload() } }
@@ -48,13 +50,18 @@ final class TrackerStore: ObservableObject {
     func start() {
         let cleanTask = task.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanTask.isEmpty else {
-            errorMessage = "Сначала напишите, над чем вы работаете."
+            errorMessage = "Enter a task before starting the timer."
+            return
+        }
+        guard let projectID = selectedProjectID else {
+            errorMessage = "Create or select a project first."
             return
         }
         do {
             let date = Date()
-            let id = try database.insert(task: cleanTask, startedAt: date)
-            activeEntry = TimeEntry(id: id, task: cleanTask, startedAt: date, endedAt: nil)
+            let id = try database.insert(projectID: projectID, task: cleanTask, startedAt: date)
+            let project = projects.first(where: { $0.id == projectID })?.name ?? "General"
+            activeEntry = TimeEntry(id: id, project: project, task: cleanTask, startedAt: date, endedAt: nil)
             now = date
             autoStopMessage = nil
             reload()
@@ -68,13 +75,29 @@ final class TrackerStore: ObservableObject {
             try database.stop(id: activeEntry.id, endedAt: date)
             self.activeEntry = nil
             task = ""
-            if automatic { autoStopMessage = "Таймер остановлен после 5 минут бездействия." }
+            if automatic { autoStopMessage = "Timer stopped after 5 minutes of inactivity." }
             reload()
         } catch { errorMessage = error.localizedDescription }
     }
 
+    func delete(entry: TimeEntry) {
+        guard entry.id != activeEntry?.id else { errorMessage = "Stop the active session before deleting it."; return }
+        do { try database.deleteEntry(id: entry.id); reload() }
+        catch { errorMessage = error.localizedDescription }
+    }
+
+    func createProject(named name: String) {
+        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanName.isEmpty else { return }
+        do {
+            let project = try database.insertProject(name: cleanName)
+            projects = try database.fetchProjects()
+            selectedProjectID = project.id
+        } catch { errorMessage = "Could not create project: \(error.localizedDescription)" }
+    }
+
     func exportCSV() { save(data: Data(("\u{FEFF}" + ExportService.csv(entries: entries)).utf8), name: "leo-report.csv", type: "csv") }
-    func exportExcel() { save(data: Data(ExportService.excelXML(entries: entries).utf8), name: "leo-report.xls", type: "xls") }
+    func exportExcel() { save(data: ExportService.xlsx(entries: entries), name: "leo-report.xlsx", type: "xlsx") }
 
     private func tick() {
         now = Date()
@@ -88,7 +111,13 @@ final class TrackerStore: ObservableObject {
     }
 
     private func reload() {
-        do { entries = try database.fetch(from: range.startDate()) }
+        do {
+            projects = try database.fetchProjects()
+            if selectedProjectID == nil || !projects.contains(where: { $0.id == selectedProjectID }) {
+                selectedProjectID = projects.first?.id
+            }
+            entries = try database.fetch(from: range.startDate())
+        }
         catch { errorMessage = error.localizedDescription }
     }
 
@@ -96,12 +125,12 @@ final class TrackerStore: ObservableObject {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = name
         guard let contentType = UTType(filenameExtension: type) else {
-            errorMessage = "Неизвестный формат экспорта."
+            errorMessage = "Unknown export format."
             return
         }
         panel.allowedContentTypes = [contentType]
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do { try data.write(to: url, options: .atomic) }
-        catch { errorMessage = "Не удалось сохранить файл: \(error.localizedDescription)" }
+        catch { errorMessage = "Could not save file: \(error.localizedDescription)" }
     }
 }

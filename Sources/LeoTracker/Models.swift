@@ -2,6 +2,7 @@ import Foundation
 
 struct TimeEntry: Identifiable, Hashable, Sendable {
     let id: Int64
+    var project: String
     var task: String
     var startedAt: Date
     var endedAt: Date?
@@ -11,11 +12,16 @@ struct TimeEntry: Identifiable, Hashable, Sendable {
     }
 }
 
+struct Project: Identifiable, Hashable, Sendable {
+    let id: Int64
+    var name: String
+}
+
 enum ReportRange: String, CaseIterable, Identifiable {
-    case today = "Сегодня"
-    case week = "Неделя"
-    case month = "Месяц"
-    case all = "Всё время"
+    case today = "Today"
+    case week = "This Week"
+    case month = "This Month"
+    case all = "All Time"
 
     var id: Self { self }
 
@@ -39,6 +45,6 @@ extension TimeInterval {
         let totalMinutes = max(0, Int(self) / 60)
         let hours = totalMinutes / 60
         let minutes = totalMinutes % 60
-        return hours > 0 ? "\(hours) ч \(minutes) мин" : "\(minutes) мин"
+        return hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
     }
 }
