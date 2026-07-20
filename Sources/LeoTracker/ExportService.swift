@@ -17,6 +17,8 @@ enum ExportService {
         return (["Date,Project,Task,Started,Ended,Units (100 = 1 hour),Duration"] + rows).joined(separator: "\n")
     }
 
+    static func exportUnits(_ duration: TimeInterval) -> Int { Int((duration / 36).rounded()) }
+
     private static func dateOnly(_ date: Date) -> String { formatted(date, format: "yyyy-MM-dd") }
     private static func csvDate(_ date: Date) -> String { dateOnly(date) }
     private static func formatted(_ date: Date, format: String) -> String {
