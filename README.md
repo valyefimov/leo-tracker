@@ -1,58 +1,59 @@
 # Leo Tracker
 
-Нативный macOS‑трекер времени на SwiftUI. Сессии хранятся локально в SQLite; есть автостоп после 5 минут системного бездействия, отчёты и экспорт CSV / Excel‑совместимого `.xls`.
+Native macOS time tracker built with SwiftUI. Sessions are stored locally in SQLite. The app includes automatic stop after 5 minutes of system inactivity, reports, and export to CSV / Excel-compatible `.xls`.
 
-## Требования
+## Requirements
 
-- macOS 14 или новее;
-- Xcode 16 или новее;
-- Command Line Tools, соответствующие установленной версии Xcode.
+- macOS 14 or later;
+- Xcode 16 or later;
+- Command Line Tools matching the installed Xcode version.
 
-## Запуск через Xcode
+## Run with Xcode
 
-1. Запустите Xcode.
-2. Выберите **File → Open** и откройте файл `Package.swift` из корня проекта.
-3. Подождите, пока Xcode проиндексирует Swift Package.
-4. В верхней панели выберите схему **LeoTracker** и устройство **My Mac**.
-5. Нажмите кнопку **Run** или сочетание клавиш `⌘R`.
+1. Open Xcode.
+2. Choose **File → Open** and open `Package.swift` from the project root.
+3. Wait for Xcode to index the Swift package.
+4. In the top toolbar, select the **LeoTracker** scheme and **My Mac** as the run destination.
+5. Press **Run** or use `⌘R`.
 
-При первом запуске SQLite автоматически создаст локальную базу данных.
+On first launch, SQLite automatically creates the local database.
 
-## Запуск через терминал
+## Run from the terminal
 
-Перейдите в каталог проекта:
+Clone the repository, then open the project directory:
 
 ```sh
-cd /Users/val/www/valyefimov/leo-tracker
+git clone <repository-url>
+cd leo-tracker
 ```
 
-Если на компьютере установлено несколько версий Xcode, выберите активную:
+If multiple Xcode versions are installed, select the active one:
 
 ```sh
 sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
 ```
 
-Проверьте окружение и запустите приложение:
+Check the environment and run the app:
 
 ```sh
 swift --version
 swift run LeoTracker
 ```
 
-Для запуска тестов используйте:
+Run tests with:
 
 ```sh
 swift test
 ```
 
-Если появляется сообщение о несовместимости Swift и macOS SDK, обновите Xcode либо повторно выполните `xcode-select` с путём к установленному полному Xcode.
+If you see an error about incompatible Swift and macOS SDK versions, update Xcode or run `xcode-select` again with the path to the installed full Xcode app.
 
-## Локальные данные
+## Local data
 
-База находится по адресу:
+The database is stored at:
 
 ```text
 ~/Library/Application Support/LeoTracker/tracker.sqlite
 ```
 
-Все записи хранятся только на компьютере пользователя и никуда не отправляются.
+All records stay on the user's computer and are not sent anywhere.
