@@ -64,15 +64,29 @@ private enum ZipArchive {
         var output = Data(); var central = Data(); var offset: UInt32 = 0
         for (name, text) in files {
             let nameData = Data(name.utf8), body = Data(text.utf8), checksum = crc32(body)
-            output += le(0x04034b50) + le(20, 2) + le(0, 2) + le(0, 2) + le(0, 2) + le(0, 2) + le(checksum) + le(UInt32(body.count)) + le(UInt32(body.count)) + le(UInt16(nameData.count), 2) + le(0, 2) + nameData + body
-            central += le(0x02014b50) + le(20, 2) + le(20, 2) + le(0, 2) + le(0, 2) + le(0, 2) + le(0, 2) + le(checksum) + le(UInt32(body.count)) + le(UInt32(body.count)) + le(UInt16(nameData.count), 2) + le(0, 2) + le(0, 2) + le(0, 2) + le(0, 2) + le(0, 4) + le(offset) + nameData
+            append([
+                le(0x04034b50), le(20, 2), le(0, 2), le(0, 2), le(0, 2), le(0, 2),
+                le(checksum), le(UInt32(body.count)), le(UInt32(body.count)),
+                le(UInt32(nameData.count), 2), le(0, 2), nameData, body
+            ], to: &output)
+            append([
+                le(0x02014b50), le(20, 2), le(20, 2), le(0, 2), le(0, 2), le(0, 2),
+                le(0, 2), le(checksum), le(UInt32(body.count)), le(UInt32(body.count)),
+                le(UInt32(nameData.count), 2), le(0, 2), le(0, 2), le(0, 2), le(0, 2),
+                le(0, 4), le(offset), nameData
+            ], to: &central)
             offset = UInt32(output.count)
         }
-        output += central + le(0x06054b50) + le(0, 2) + le(0, 2) + le(UInt16(files.count), 2) + le(UInt16(files.count), 2) + le(UInt32(central.count)) + le(offset) + le(0, 2)
+        append([
+            central, le(0x06054b50), le(0, 2), le(0, 2), le(UInt32(files.count), 2),
+            le(UInt32(files.count), 2), le(UInt32(central.count)), le(offset), le(0, 2)
+        ], to: &output)
         return output
     }
+    private static func append(_ parts: [Data], to output: inout Data) {
+        for part in parts { output.append(part) }
+    }
     private static func le(_ value: UInt32, _ bytes: Int = 4) -> Data { Data((0..<bytes).map { UInt8((value >> (8 * $0)) & 0xff) }) }
-    private static func le(_ value: UInt16, _ bytes: Int = 2) -> Data { le(UInt32(value), bytes) }
     private static func crc32(_ data: Data) -> UInt32 {
         var crc: UInt32 = 0xffffffff
         for byte in data { crc ^= UInt32(byte); for _ in 0..<8 { crc = (crc & 1) == 1 ? (crc >> 1) ^ 0xedb88320 : crc >> 1 } }
