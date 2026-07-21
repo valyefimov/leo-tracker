@@ -327,11 +327,11 @@ private struct ReportCalendar: View {
                                     .font(.headline)
                                 Text(total > 0 ? total.hoursText : "—")
                                     .font(.caption.monospacedDigit())
-                                    .foregroundStyle(total > 0 ? LeoTheme.deepGreen : .secondary)
+                                    .foregroundStyle(total > 0 ? .primary : .secondary)
                             }
                             .frame(maxWidth: .infinity, minHeight: 74, alignment: .topLeading)
                             .padding(10)
-                            .background(total > 0 ? LeoTheme.green.opacity(0.12) : Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
+                            .background(total > 0 ? LeoTheme.green.opacity(0.18) : Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
                         }
                     }
                 }
