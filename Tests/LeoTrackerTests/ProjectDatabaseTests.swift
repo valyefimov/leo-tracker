@@ -16,17 +16,16 @@ final class ProjectDatabaseTests: XCTestCase {
         XCTAssertEqual(entries.first?.projectHourlyRate, 150)
     }
 
-    func testProjectDeleteReassignsEntries() throws {
+    func testProjectDeleteRemovesEntries() throws {
         let database = try makeDatabase()
-        let fallback = try database.insertProject(name: "Fallback")
+        _ = try database.insertProject(name: "Fallback")
         let project = try database.insertProject(name: "Remove Me")
         _ = try database.insert(projectID: project.id, task: "Build", startedAt: Date(timeIntervalSince1970: 0))
 
-        try database.deleteProject(id: project.id, fallbackProjectID: fallback.id)
+        try database.deleteProject(id: project.id)
 
         let entries = try database.fetch()
-        XCTAssertEqual(entries.first?.projectID, fallback.id)
-        XCTAssertEqual(entries.first?.project, "Fallback")
+        XCTAssertTrue(entries.isEmpty)
         XCTAssertFalse(try database.fetchProjects().contains(project))
     }
 
@@ -58,6 +57,23 @@ final class ProjectDatabaseTests: XCTestCase {
 
         XCTAssertEqual(entries.map(\.task), ["B"])
         XCTAssertEqual(entries.first?.projectID, second.id)
+    }
+
+    func testBackupExportImportRestoresAllData() throws {
+        let source = try makeDatabase()
+        let project = try source.insertProject(name: "Client", hourlyRate: 125)
+        _ = try source.insert(projectID: project.id, task: "Work", startedAt: Date(timeIntervalSince1970: 100))
+        try source.saveDefaultProjectID(project.id)
+        try source.saveExportColumns([.project, .hours, .amount])
+
+        let backup = try source.exportBackup()
+        let target = try makeDatabase()
+        try target.importBackup(backup)
+
+        XCTAssertEqual(try target.fetchProjects().map(\.name), ["Client", "General"])
+        XCTAssertEqual(try target.fetch().map(\.task), ["Work"])
+        XCTAssertEqual(try target.fetchDefaultProjectID(), project.id)
+        XCTAssertEqual(try target.fetchExportColumns(), [.project, .hours, .amount])
     }
 
     private func makeDatabase() throws -> Database {

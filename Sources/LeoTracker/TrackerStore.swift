@@ -178,7 +178,7 @@ final class TrackerStore: ObservableObject {
         }
         guard let fallbackProjectID = projects.first(where: { $0.id != project.id })?.id else { return }
         do {
-            try database.deleteProject(id: project.id, fallbackProjectID: fallbackProjectID)
+            try database.deleteProject(id: project.id)
             if selectedProjectID == project.id { selectedProjectID = fallbackProjectID }
             if reportProjectID == project.id { reportProjectID = fallbackProjectID }
             if defaultProjectID == project.id { setDefaultProject(id: fallbackProjectID) }

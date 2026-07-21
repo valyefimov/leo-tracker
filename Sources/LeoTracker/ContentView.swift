@@ -15,6 +15,7 @@ struct ContentView: View {
     @State private var editProjectName = ""
     @State private var editProjectRate = ""
     @State private var projectToDelete: Project?
+    @State private var showingImportConfirmation = false
 
     var body: some View {
         NavigationSplitView {
@@ -85,7 +86,11 @@ struct ContentView: View {
         .alert("Delete project?", isPresented: Binding(get: { projectToDelete != nil }, set: { if !$0 { projectToDelete = nil } })) {
             Button("Delete", role: .destructive) { if let projectToDelete { store.delete(project: projectToDelete) }; projectToDelete = nil }
             Button("Cancel", role: .cancel) { projectToDelete = nil }
-        } message: { Text("Sessions from this project will be moved to another project, not deleted.") }
+        } message: { Text("This project and all of its sessions will be permanently deleted.") }
+        .alert("Import backup?", isPresented: $showingImportConfirmation) {
+            Button("Import", role: .destructive) { store.importAllData() }
+            Button("Cancel", role: .cancel) {}
+        } message: { Text("Import replaces all local projects, sessions, and settings with the selected backup file.") }
         .sheet(item: $entryToEdit) { entry in
             VStack(alignment: .leading, spacing: 18) {
                 Text("Edit Session").font(.title2.bold())
@@ -269,7 +274,7 @@ struct ContentView: View {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Projects").font(.headline)
-                                Text("Edit names, add projects, or remove projects without deleting sessions.")
+                                Text("Edit names, add projects, or remove projects with all related sessions.")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -335,6 +340,30 @@ struct ContentView: View {
                                 .toggleStyle(.checkbox)
                                 .pointingHandCursor()
                             }
+                        }
+                    }
+                }
+                Card {
+                    VStack(alignment: .leading, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Data backup").font(.headline)
+                            Text("Export or restore all projects, sessions, rates, and settings as a JSON backup.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        HStack {
+                            Button("Export All Data", systemImage: "square.and.arrow.up") {
+                                store.exportAllData()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(LeoTheme.green)
+                            .pointingHandCursor()
+                            Button("Import Backup", systemImage: "square.and.arrow.down") {
+                                showingImportConfirmation = true
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(store.isTracking)
+                            .pointingHandCursor(!store.isTracking)
                         }
                     }
                 }

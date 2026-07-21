@@ -98,20 +98,26 @@ final class Database: @unchecked Sendable {
         }
     }
 
-    func deleteProject(id: Int64, fallbackProjectID: Int64) throws {
+    func deleteProject(id: Int64) throws {
         try locked {
-            var updateStatement: OpaquePointer?
-            guard sqlite3_prepare_v2(handle, "UPDATE time_entries SET project_id = ? WHERE project_id = ?", -1, &updateStatement, nil) == SQLITE_OK else { throw lastError() }
-            defer { sqlite3_finalize(updateStatement) }
-            sqlite3_bind_int64(updateStatement, 1, fallbackProjectID)
-            sqlite3_bind_int64(updateStatement, 2, id)
-            guard sqlite3_step(updateStatement) == SQLITE_DONE else { throw lastError() }
+            try execute("BEGIN IMMEDIATE TRANSACTION")
+            do {
+                var entriesStatement: OpaquePointer?
+                guard sqlite3_prepare_v2(handle, "DELETE FROM time_entries WHERE project_id = ?", -1, &entriesStatement, nil) == SQLITE_OK else { throw lastError() }
+                sqlite3_bind_int64(entriesStatement, 1, id)
+                guard sqlite3_step(entriesStatement) == SQLITE_DONE else { throw lastError() }
+                sqlite3_finalize(entriesStatement)
 
-            var deleteStatement: OpaquePointer?
-            guard sqlite3_prepare_v2(handle, "DELETE FROM projects WHERE id = ?", -1, &deleteStatement, nil) == SQLITE_OK else { throw lastError() }
-            defer { sqlite3_finalize(deleteStatement) }
-            sqlite3_bind_int64(deleteStatement, 1, id)
-            guard sqlite3_step(deleteStatement) == SQLITE_DONE else { throw lastError() }
+                var projectStatement: OpaquePointer?
+                guard sqlite3_prepare_v2(handle, "DELETE FROM projects WHERE id = ?", -1, &projectStatement, nil) == SQLITE_OK else { throw lastError() }
+                sqlite3_bind_int64(projectStatement, 1, id)
+                guard sqlite3_step(projectStatement) == SQLITE_DONE else { throw lastError() }
+                sqlite3_finalize(projectStatement)
+                try execute("COMMIT")
+            } catch {
+                try? execute("ROLLBACK")
+                throw error
+            }
         }
     }
 
