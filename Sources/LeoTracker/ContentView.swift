@@ -6,6 +6,9 @@ struct ContentView: View {
     @State private var showingNewProject = false
     @State private var newProjectName = ""
     @State private var entryToDelete: TimeEntry?
+    @State private var entryToEdit: TimeEntry?
+    @State private var editStartedAt = Date()
+    @State private var editEndedAt = Date()
 
     var body: some View {
         NavigationSplitView {
@@ -55,6 +58,32 @@ struct ContentView: View {
             Button("Delete", role: .destructive) { if let entryToDelete { store.delete(entry: entryToDelete) }; entryToDelete = nil }
             Button("Cancel", role: .cancel) { entryToDelete = nil }
         } message: { Text("This session will be permanently removed.") }
+        .sheet(item: $entryToEdit) { entry in
+            VStack(alignment: .leading, spacing: 18) {
+                Text("Edit Session Time").font(.title2.bold())
+                Text(entry.task).font(.headline).lineLimit(2).textSelection(.enabled)
+                DatePicker("Start", selection: $editStartedAt, displayedComponents: [.date, .hourAndMinute])
+                if entry.endedAt != nil {
+                    DatePicker("End", selection: $editEndedAt, displayedComponents: [.date, .hourAndMinute])
+                } else {
+                    Text("Active session: only the start time can be edited.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                HStack {
+                    Spacer()
+                    Button("Cancel") { entryToEdit = nil }
+                    Button("Save") {
+                        store.update(entry: entry, startedAt: editStartedAt, endedAt: entry.endedAt == nil ? nil : editEndedAt)
+                        entryToEdit = nil
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(LeoTheme.green)
+                }
+            }
+            .padding(24)
+            .frame(width: 420)
+        }
     }
 
     private var tracker: some View {
@@ -89,8 +118,19 @@ struct ContentView: View {
                             .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 12))
                             .disabled(store.isTracking).onSubmit { if !store.isTracking { store.start() } }
                         HStack {
-                            Label("Auto-stops after 5 minutes inactive", systemImage: "moon.zzz")
+                            Label(store.autoStopDescription, systemImage: "moon.zzz")
                             Spacer()
+                            Picker("Auto stop", selection: $store.autoStopMinutes) {
+                                Text("Off").tag(0)
+                                Text("1 min").tag(1)
+                                Text("5 min").tag(5)
+                                Text("10 min").tag(10)
+                                Text("15 min").tag(15)
+                                Text("30 min").tag(30)
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                            .frame(width: 100)
                             Text("Today: \(store.entries.filter { Calendar.current.isDateInToday($0.startedAt) }.reduce(0) { $0 + $1.duration }.shortText)").fontWeight(.semibold)
                         }.font(.callout).foregroundStyle(.secondary)
                     }
@@ -117,9 +157,11 @@ struct ContentView: View {
                     .pickerStyle(.segmented).frame(maxWidth: 520)
                 HStack(spacing: 16) {
                     metric("Total time", value: store.totalDuration.shortText, icon: "clock.fill")
+                    metric("Hours", value: store.totalDuration.hoursText, icon: "calendar.badge.clock")
                     metric("Sessions", value: "\(store.entries.count)", icon: "checkmark.circle.fill")
                     metric("Average", value: (store.entries.isEmpty ? 0 : store.totalDuration / Double(store.entries.count)).shortText, icon: "chart.line.uptrend.xyaxis")
                 }
+                ReportCalendar(days: reportCalendarDays, totals: dailyDurations)
                 latestEntries
             }.padding(34).frame(maxWidth: 980)
         }
@@ -141,9 +183,22 @@ struct ContentView: View {
                                 Text(entry.task).fontWeight(.medium).lineLimit(1)
                                 Text("\(entry.project) · \(entry.startedAt.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary)
                             }
+                            .textSelection(.enabled)
                             Spacer()
                             Text(entry.duration.shortText).font(.system(.body, design: .rounded).weight(.semibold)).monospacedDigit()
-                            if entry.endedAt != nil { Button("Delete", systemImage: "trash", role: .destructive) { entryToDelete = entry }.labelStyle(.iconOnly).buttonStyle(.borderless).help("Delete session") }
+                                .textSelection(.enabled)
+                            Button("Edit", systemImage: "pencil") { beginEditing(entry) }
+                                .labelStyle(.iconOnly)
+                                .buttonStyle(.borderless)
+                                .help("Edit session time")
+                            if entry.endedAt != nil {
+                                Button("Continue", systemImage: "play.fill") { store.continueSession(from: entry) }
+                                    .labelStyle(.iconOnly)
+                                    .buttonStyle(.borderless)
+                                    .disabled(store.isTracking)
+                                    .help("Continue with the same session name")
+                                Button("Delete", systemImage: "trash", role: .destructive) { entryToDelete = entry }.labelStyle(.iconOnly).buttonStyle(.borderless).help("Delete session")
+                            }
                         }.padding(.vertical, 12)
                     }
                 }
@@ -154,8 +209,8 @@ struct ContentView: View {
     private func navItem(_ title: String, icon: String) -> some View {
         Button { selection = title } label: {
             Label(title, systemImage: icon).frame(maxWidth: .infinity, alignment: .leading).padding(10)
-                .background(selection == title ? LeoTheme.green.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 10))
-                .foregroundStyle(selection == title ? LeoTheme.deepGreen : .primary)
+                .background(selection == title ? LeoTheme.green : .clear, in: RoundedRectangle(cornerRadius: 10))
+                .foregroundStyle(selection == title ? .white : .primary)
         }.buttonStyle(.plain)
     }
 
@@ -166,5 +221,91 @@ struct ContentView: View {
     private func createProject() {
         store.createProject(named: newProjectName)
         showingNewProject = false
+    }
+
+    private func beginEditing(_ entry: TimeEntry) {
+        editStartedAt = entry.startedAt
+        editEndedAt = entry.endedAt ?? Date()
+        entryToEdit = entry
+    }
+
+    private var dailyDurations: [Date: TimeInterval] {
+        Dictionary(grouping: store.entries, by: { Calendar.current.startOfDay(for: $0.startedAt) })
+            .mapValues { $0.reduce(0) { $0 + $1.duration } }
+    }
+
+    private var reportCalendarDays: [Date] {
+        let calendar = Calendar.current
+        let today = Date()
+        switch store.range {
+        case .today:
+            return [calendar.startOfDay(for: today)]
+        case .week:
+            guard let interval = calendar.dateInterval(of: .weekOfYear, for: today) else { return [] }
+            return days(from: interval.start, to: calendar.date(byAdding: .day, value: 6, to: interval.start) ?? interval.start)
+        case .month:
+            guard let interval = calendar.dateInterval(of: .month, for: today),
+                  let end = calendar.date(byAdding: .day, value: -1, to: interval.end)
+            else { return [] }
+            return days(from: interval.start, to: end)
+        case .all:
+            guard let first = store.entries.map(\.startedAt).min(),
+                  let last = store.entries.map(\.startedAt).max()
+            else { return [] }
+            return days(from: calendar.startOfDay(for: first), to: calendar.startOfDay(for: last))
+        }
+    }
+
+    private func days(from start: Date, to end: Date) -> [Date] {
+        var result: [Date] = []
+        var day = Calendar.current.startOfDay(for: start)
+        let endDay = Calendar.current.startOfDay(for: end)
+        while day <= endDay {
+            result.append(day)
+            guard let next = Calendar.current.date(byAdding: .day, value: 1, to: day) else { break }
+            day = next
+        }
+        return result
+    }
+}
+
+private struct ReportCalendar: View {
+    let days: [Date]
+    let totals: [Date: TimeInterval]
+
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 7)
+
+    var body: some View {
+        Card {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Text("Calendar").font(.headline)
+                    Spacer()
+                    Text("Hours by day").font(.caption).foregroundStyle(.secondary)
+                }
+                if days.isEmpty {
+                    Text("No time in this period.").foregroundStyle(.secondary)
+                } else {
+                    LazyVGrid(columns: columns, spacing: 8) {
+                        ForEach(days, id: \.self) { day in
+                            let total = totals[Calendar.current.startOfDay(for: day)] ?? 0
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(day.formatted(.dateTime.weekday(.abbreviated)))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                Text(day.formatted(.dateTime.day()))
+                                    .font(.headline)
+                                Text(total > 0 ? total.hoursText : "—")
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(total > 0 ? LeoTheme.deepGreen : .secondary)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 74, alignment: .topLeading)
+                            .padding(10)
+                            .background(total > 0 ? LeoTheme.green.opacity(0.12) : Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
+                        }
+                    }
+                }
+            }
+        }
     }
 }

@@ -100,6 +100,23 @@ final class Database: @unchecked Sendable {
         }
     }
 
+    func updateEntryTime(id: Int64, startedAt: Date, endedAt: Date?) throws {
+        try locked {
+            let sql = "UPDATE time_entries SET started_at = ?, ended_at = ? WHERE id = ?"
+            var statement: OpaquePointer?
+            guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else { throw lastError() }
+            defer { sqlite3_finalize(statement) }
+            sqlite3_bind_double(statement, 1, startedAt.timeIntervalSince1970)
+            if let endedAt {
+                sqlite3_bind_double(statement, 2, endedAt.timeIntervalSince1970)
+            } else {
+                sqlite3_bind_null(statement, 2)
+            }
+            sqlite3_bind_int64(statement, 3, id)
+            guard sqlite3_step(statement) == SQLITE_DONE else { throw lastError() }
+        }
+    }
+
     func fetch(from start: Date? = nil) throws -> [TimeEntry] {
         try locked {
             let sql = start == nil

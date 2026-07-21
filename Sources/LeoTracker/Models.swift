@@ -47,4 +47,8 @@ extension TimeInterval {
         let minutes = totalMinutes % 60
         return hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
     }
+
+    var hoursText: String {
+        String(format: "%.2f h", max(0, self) / 3600)
+    }
 }

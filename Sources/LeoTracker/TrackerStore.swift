@@ -15,13 +15,17 @@ final class TrackerStore: ObservableObject {
     @Published var range: ReportRange = .week { didSet { reload() } }
     @Published var errorMessage: String?
     @Published var autoStopMessage: String?
+    @Published var autoStopMinutes: Int {
+        didSet { UserDefaults.standard.set(autoStopMinutes, forKey: Self.autoStopMinutesKey) }
+    }
 
-    let idleLimit: TimeInterval = 5 * 60
+    private static let autoStopMinutesKey = "autoStopMinutes"
     private let database: Database
     private var timer: Timer?
 
     init() {
         do {
+            autoStopMinutes = UserDefaults.standard.object(forKey: Self.autoStopMinutesKey) as? Int ?? 5
             let support = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
                 .appendingPathComponent("LeoTracker", isDirectory: true)
             try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
@@ -42,6 +46,8 @@ final class TrackerStore: ObservableObject {
     var isTracking: Bool { activeEntry != nil }
     var elapsed: TimeInterval { activeEntry.map { now.timeIntervalSince($0.startedAt) } ?? 0 }
     var totalDuration: TimeInterval { entries.reduce(0) { $0 + $1.duration } }
+    var idleLimit: TimeInterval? { autoStopMinutes > 0 ? TimeInterval(autoStopMinutes * 60) : nil }
+    var autoStopDescription: String { autoStopMinutes > 0 ? "Auto-stops after \(autoStopMinutes) minutes inactive" : "Auto-stop is off" }
 
     func toggleTracking() {
         isTracking ? stop() : start()
@@ -68,6 +74,18 @@ final class TrackerStore: ObservableObject {
         } catch { errorMessage = error.localizedDescription }
     }
 
+    func continueSession(from entry: TimeEntry) {
+        guard !isTracking else {
+            errorMessage = "Stop the active session before continuing another one."
+            return
+        }
+        task = entry.task
+        if let project = projects.first(where: { $0.name == entry.project }) {
+            selectedProjectID = project.id
+        }
+        start()
+    }
+
     func stop(automatic: Bool = false) {
         guard let activeEntry else { return }
         do {
@@ -75,7 +93,7 @@ final class TrackerStore: ObservableObject {
             try database.stop(id: activeEntry.id, endedAt: date)
             self.activeEntry = nil
             task = ""
-            if automatic { autoStopMessage = "Timer stopped after 5 minutes of inactivity." }
+            if automatic { autoStopMessage = "Timer stopped after \(autoStopMinutes) minutes of inactivity." }
             reload()
         } catch { errorMessage = error.localizedDescription }
     }
@@ -84,6 +102,20 @@ final class TrackerStore: ObservableObject {
         guard entry.id != activeEntry?.id else { errorMessage = "Stop the active session before deleting it."; return }
         do { try database.deleteEntry(id: entry.id); reload() }
         catch { errorMessage = error.localizedDescription }
+    }
+
+    func update(entry: TimeEntry, startedAt: Date, endedAt: Date?) {
+        if let endedAt, endedAt < startedAt {
+            errorMessage = "End time must be after start time."
+            return
+        }
+        do {
+            try database.updateEntryTime(id: entry.id, startedAt: startedAt, endedAt: endedAt)
+            if activeEntry?.id == entry.id {
+                activeEntry = TimeEntry(id: entry.id, project: entry.project, task: entry.task, startedAt: startedAt, endedAt: endedAt)
+            }
+            reload()
+        } catch { errorMessage = error.localizedDescription }
     }
 
     func createProject(named name: String) {
@@ -100,7 +132,7 @@ final class TrackerStore: ObservableObject {
 
     private func tick() {
         now = Date()
-        guard isTracking, systemIdleTime >= idleLimit else { return }
+        guard let idleLimit, isTracking, systemIdleTime >= idleLimit else { return }
         stop(automatic: true)
     }
 
