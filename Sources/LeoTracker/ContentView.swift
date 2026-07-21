@@ -6,6 +6,7 @@ struct ContentView: View {
     @State private var showingNewProject = false
     @State private var newProjectName = ""
     @State private var newProjectRate = ""
+    @State private var newProjectCurrency = "EUR"
     @State private var entryToDelete: TimeEntry?
     @State private var entryToEdit: TimeEntry?
     @State private var editTask = ""
@@ -14,6 +15,7 @@ struct ContentView: View {
     @State private var projectToEdit: Project?
     @State private var editProjectName = ""
     @State private var editProjectRate = ""
+    @State private var editProjectCurrency = ""
     @State private var projectToDelete: Project?
     @State private var showingImportConfirmation = false
 
@@ -67,6 +69,8 @@ struct ContentView: View {
                 Text("New Project").font(.title2.bold())
                 TextField("Project name", text: $newProjectName).textFieldStyle(.roundedBorder).onSubmit { createProject() }
                 TextField("Rate per hour", text: $newProjectRate)
+                    .textFieldStyle(.roundedBorder)
+                TextField("Currency", text: $newProjectCurrency)
                     .textFieldStyle(.roundedBorder)
                 HStack {
                     Spacer()
@@ -132,6 +136,8 @@ struct ContentView: View {
                     }
                 TextField("Rate per hour", text: $editProjectRate)
                     .textFieldStyle(.roundedBorder)
+                TextField("Currency", text: $editProjectCurrency)
+                    .textFieldStyle(.roundedBorder)
                 HStack {
                     Spacer()
                     Button("Cancel") { projectToEdit = nil }
@@ -174,7 +180,7 @@ struct ContentView: View {
                         HStack(spacing: 10) {
                             Picker("Project", selection: $store.selectedProjectID) { ForEach(store.projects) { Text($0.name).tag(Optional($0.id)) } }
                                 .labelsHidden().frame(maxWidth: 230).disabled(store.isTracking).pointingHandCursor(!store.isTracking)
-                            Button("New Project", systemImage: "plus") { newProjectName = ""; newProjectRate = ""; showingNewProject = true }.disabled(store.isTracking).pointingHandCursor(!store.isTracking)
+                            Button("New Project", systemImage: "plus") { resetNewProjectForm(); showingNewProject = true }.disabled(store.isTracking).pointingHandCursor(!store.isTracking)
                         }
                         TextField("What are you working on?", text: $store.task, axis: .vertical)
                             .textFieldStyle(.plain).font(.title3).padding(15)
@@ -232,7 +238,7 @@ struct ContentView: View {
                 HStack(spacing: 16) {
                     metric("Total time", value: store.totalReportDuration.shortText, icon: "clock.fill")
                     metric("Hours", value: store.totalReportDuration.hoursText, icon: "calendar.badge.clock")
-                    metric("Amount", value: store.totalReportAmount.moneyText, icon: "banknote.fill")
+                    metric("Amount", value: "\(store.totalReportAmount.moneyText) \(store.reportCurrency)", icon: "banknote.fill")
                     metric("Sessions", value: "\(reportEntries.count)", icon: "checkmark.circle.fill")
                     metric("Average", value: (reportEntries.isEmpty ? 0 : store.totalReportDuration / Double(reportEntries.count)).shortText, icon: "chart.line.uptrend.xyaxis")
                 }
@@ -280,8 +286,7 @@ struct ContentView: View {
                             }
                             Spacer()
                             Button("Add Project", systemImage: "plus") {
-                                newProjectName = ""
-                                newProjectRate = ""
+                                resetNewProjectForm()
                                 showingNewProject = true
                             }
                             .buttonStyle(.borderedProminent)
@@ -432,8 +437,14 @@ struct ContentView: View {
             store.errorMessage = "Enter a valid rate per hour."
             return
         }
-        store.createProject(named: newProjectName, hourlyRate: hourlyRate)
+        store.createProject(named: newProjectName, hourlyRate: hourlyRate, currency: currencyCode(newProjectCurrency))
         showingNewProject = false
+    }
+
+    private func resetNewProjectForm() {
+        newProjectName = ""
+        newProjectRate = ""
+        newProjectCurrency = "EUR"
     }
 
     private func beginEditing(_ entry: TimeEntry) {
@@ -446,6 +457,7 @@ struct ContentView: View {
     private func beginEditing(_ project: Project) {
         editProjectName = project.name
         editProjectRate = project.hourlyRate.moneyText
+        editProjectCurrency = project.currency
         projectToEdit = project
     }
 
@@ -454,7 +466,7 @@ struct ContentView: View {
             store.errorMessage = "Enter a valid rate per hour."
             return false
         }
-        return store.update(project: project, name: editProjectName, hourlyRate: hourlyRate)
+        return store.update(project: project, name: editProjectName, hourlyRate: hourlyRate, currency: currencyCode(editProjectCurrency))
     }
 
     private func decimalValue(_ text: String) -> Double? {
@@ -463,12 +475,17 @@ struct ContentView: View {
         return Double(clean.replacingOccurrences(of: ",", with: "."))
     }
 
+    private func currencyCode(_ text: String) -> String {
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        return clean.isEmpty ? "EUR" : clean
+    }
+
     private func projectSubtitle(_ project: Project) -> String {
         var parts: [String] = []
         if project.id == store.defaultProjectID { parts.append("Default") }
         if project.id == store.selectedProjectID { parts.append("Selected for tracking") }
         if parts.isEmpty { parts.append("Available project") }
-        parts.append("\(project.hourlyRate.moneyText)/h")
+        parts.append("\(project.hourlyRate.moneyText) \(project.currency)/h")
         return parts.joined(separator: " · ")
     }
 

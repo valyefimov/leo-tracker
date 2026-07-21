@@ -5,15 +5,16 @@ import XCTest
 final class ProjectDatabaseTests: XCTestCase {
     func testProjectRenameUpdatesFetchedEntries() throws {
         let database = try makeDatabase()
-        let project = try database.insertProject(name: "Client A", hourlyRate: 120)
+        let project = try database.insertProject(name: "Client A", hourlyRate: 120, currency: "usd")
         _ = try database.insert(projectID: project.id, task: "Planning", startedAt: Date(timeIntervalSince1970: 0))
 
-        try database.updateProject(id: project.id, name: "Client B", hourlyRate: 150)
+        try database.updateProject(id: project.id, name: "Client B", hourlyRate: 150, currency: "eur")
 
         let entries = try database.fetch()
         XCTAssertEqual(entries.first?.project, "Client B")
         XCTAssertEqual(entries.first?.projectID, project.id)
         XCTAssertEqual(entries.first?.projectHourlyRate, 150)
+        XCTAssertEqual(entries.first?.projectCurrency, "EUR")
     }
 
     func testProjectDeleteRemovesEntries() throws {
@@ -61,7 +62,7 @@ final class ProjectDatabaseTests: XCTestCase {
 
     func testBackupExportImportRestoresAllData() throws {
         let source = try makeDatabase()
-        let project = try source.insertProject(name: "Client", hourlyRate: 125)
+        let project = try source.insertProject(name: "Client", hourlyRate: 125, currency: "USD")
         _ = try source.insert(projectID: project.id, task: "Work", startedAt: Date(timeIntervalSince1970: 100))
         try source.saveDefaultProjectID(project.id)
         try source.saveExportColumns([.project, .hours, .amount])
@@ -70,7 +71,9 @@ final class ProjectDatabaseTests: XCTestCase {
         let target = try makeDatabase()
         try target.importBackup(backup)
 
-        XCTAssertEqual(try target.fetchProjects().map(\.name), ["Client", "General"])
+        let projects = try target.fetchProjects()
+        XCTAssertEqual(projects.map(\.name), ["Client", "General"])
+        XCTAssertEqual(projects.first(where: { $0.name == "Client" })?.currency, "USD")
         XCTAssertEqual(try target.fetch().map(\.task), ["Work"])
         XCTAssertEqual(try target.fetchDefaultProjectID(), project.id)
         XCTAssertEqual(try target.fetchExportColumns(), [.project, .hours, .amount])

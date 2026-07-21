@@ -59,6 +59,11 @@ final class TrackerStore: ObservableObject {
     var totalReportAmount: Double {
         reportEntries.reduce(0) { $0 + ExportService.roundedQuarterHours($1.duration) * $1.projectHourlyRate }
     }
+    var reportCurrency: String {
+        projects.first(where: { $0.id == reportProjectID })?.currency
+            ?? reportEntries.first?.projectCurrency
+            ?? "EUR"
+    }
     var idleLimit: TimeInterval? { autoStopMinutes > 0 ? TimeInterval(autoStopMinutes * 60) : nil }
     var autoStopDescription: String { autoStopMinutes > 0 ? "Auto-stops after \(autoStopMinutes) minutes inactive" : "Auto-stop is off" }
 
@@ -80,7 +85,16 @@ final class TrackerStore: ObservableObject {
             let date = Date()
             let id = try database.insert(projectID: projectID, task: cleanTask, startedAt: date)
             let project = projects.first(where: { $0.id == projectID })
-            activeEntry = TimeEntry(id: id, projectID: projectID, project: project?.name ?? "General", projectHourlyRate: project?.hourlyRate ?? 0, task: cleanTask, startedAt: date, endedAt: nil)
+            activeEntry = TimeEntry(
+                id: id,
+                projectID: projectID,
+                project: project?.name ?? "General",
+                projectHourlyRate: project?.hourlyRate ?? 0,
+                projectCurrency: project?.currency ?? "EUR",
+                task: cleanTask,
+                startedAt: date,
+                endedAt: nil
+            )
             now = date
             autoStopMessage = nil
             reload()
@@ -128,18 +142,27 @@ final class TrackerStore: ObservableObject {
         do {
             try database.updateEntry(id: entry.id, task: cleanTask, startedAt: startedAt, endedAt: endedAt)
             if activeEntry?.id == entry.id {
-                activeEntry = TimeEntry(id: entry.id, projectID: entry.projectID, project: entry.project, projectHourlyRate: entry.projectHourlyRate, task: cleanTask, startedAt: startedAt, endedAt: endedAt)
+                activeEntry = TimeEntry(
+                    id: entry.id,
+                    projectID: entry.projectID,
+                    project: entry.project,
+                    projectHourlyRate: entry.projectHourlyRate,
+                    projectCurrency: entry.projectCurrency,
+                    task: cleanTask,
+                    startedAt: startedAt,
+                    endedAt: endedAt
+                )
                 self.task = cleanTask
             }
             reload()
         } catch { errorMessage = error.localizedDescription }
     }
 
-    func createProject(named name: String, hourlyRate: Double = 0) {
+    func createProject(named name: String, hourlyRate: Double = 0, currency: String = "EUR") {
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanName.isEmpty else { return }
         do {
-            let project = try database.insertProject(name: cleanName, hourlyRate: hourlyRate)
+            let project = try database.insertProject(name: cleanName, hourlyRate: hourlyRate, currency: currency)
             projects = try database.fetchProjects()
             selectedProjectID = project.id
             if defaultProjectID == nil { setDefaultProject(id: project.id) }
@@ -147,7 +170,7 @@ final class TrackerStore: ObservableObject {
         } catch { errorMessage = "Could not create project: \(error.localizedDescription)" }
     }
 
-    func update(project: Project, name: String, hourlyRate: Double) -> Bool {
+    func update(project: Project, name: String, hourlyRate: Double, currency: String) -> Bool {
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanName.isEmpty else {
             errorMessage = "Project name cannot be empty."
@@ -158,7 +181,7 @@ final class TrackerStore: ObservableObject {
             return false
         }
         do {
-            try database.updateProject(id: project.id, name: cleanName, hourlyRate: hourlyRate)
+            try database.updateProject(id: project.id, name: cleanName, hourlyRate: hourlyRate, currency: currency)
             reload()
             return true
         } catch {

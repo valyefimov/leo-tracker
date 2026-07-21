@@ -32,7 +32,8 @@ final class Database: @unchecked Sendable {
             CREATE TABLE IF NOT EXISTS projects (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               name TEXT NOT NULL COLLATE NOCASE UNIQUE,
-              hourly_rate REAL NOT NULL DEFAULT 0
+              hourly_rate REAL NOT NULL DEFAULT 0,
+              currency TEXT NOT NULL DEFAULT 'EUR'
             );
             CREATE TABLE IF NOT EXISTS app_settings (
               key TEXT PRIMARY KEY,
@@ -61,39 +62,48 @@ final class Database: @unchecked Sendable {
         }
     }
 
-    func insertProject(name: String, hourlyRate: Double = 0) throws -> Project {
+    func insertProject(name: String, hourlyRate: Double = 0, currency: String = "EUR") throws -> Project {
         try locked {
+            let cleanCurrency = normalizedCurrency(currency)
             var statement: OpaquePointer?
-            guard sqlite3_prepare_v2(handle, "INSERT INTO projects(name, hourly_rate) VALUES (?, ?)", -1, &statement, nil) == SQLITE_OK else { throw lastError() }
+            guard sqlite3_prepare_v2(handle, "INSERT INTO projects(name, hourly_rate, currency) VALUES (?, ?, ?)", -1, &statement, nil) == SQLITE_OK else { throw lastError() }
             defer { sqlite3_finalize(statement) }
             sqlite3_bind_text(statement, 1, name, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
             sqlite3_bind_double(statement, 2, max(0, hourlyRate))
+            sqlite3_bind_text(statement, 3, cleanCurrency, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
             guard sqlite3_step(statement) == SQLITE_DONE else { throw lastError() }
-            return Project(id: sqlite3_last_insert_rowid(handle), name: name, hourlyRate: max(0, hourlyRate))
+            return Project(id: sqlite3_last_insert_rowid(handle), name: name, hourlyRate: max(0, hourlyRate), currency: cleanCurrency)
         }
     }
 
     func fetchProjects() throws -> [Project] {
         try locked {
             var statement: OpaquePointer?
-            guard sqlite3_prepare_v2(handle, "SELECT id, name, hourly_rate FROM projects ORDER BY name COLLATE NOCASE", -1, &statement, nil) == SQLITE_OK else { throw lastError() }
+            guard sqlite3_prepare_v2(handle, "SELECT id, name, hourly_rate, currency FROM projects ORDER BY name COLLATE NOCASE", -1, &statement, nil) == SQLITE_OK else { throw lastError() }
             defer { sqlite3_finalize(statement) }
             var items: [Project] = []
             while sqlite3_step(statement) == SQLITE_ROW {
-                items.append(Project(id: sqlite3_column_int64(statement, 0), name: String(cString: sqlite3_column_text(statement, 1)), hourlyRate: sqlite3_column_double(statement, 2)))
+                items.append(Project(
+                    id: sqlite3_column_int64(statement, 0),
+                    name: String(cString: sqlite3_column_text(statement, 1)),
+                    hourlyRate: sqlite3_column_double(statement, 2),
+                    currency: sqlite3_column_text(statement, 3).map { String(cString: $0) } ?? "EUR"
+                ))
             }
             return items
         }
     }
 
-    func updateProject(id: Int64, name: String, hourlyRate: Double) throws {
+    func updateProject(id: Int64, name: String, hourlyRate: Double, currency: String) throws {
         try locked {
+            let cleanCurrency = normalizedCurrency(currency)
             var statement: OpaquePointer?
-            guard sqlite3_prepare_v2(handle, "UPDATE projects SET name = ?, hourly_rate = ? WHERE id = ?", -1, &statement, nil) == SQLITE_OK else { throw lastError() }
+            guard sqlite3_prepare_v2(handle, "UPDATE projects SET name = ?, hourly_rate = ?, currency = ? WHERE id = ?", -1, &statement, nil) == SQLITE_OK else { throw lastError() }
             defer { sqlite3_finalize(statement) }
             sqlite3_bind_text(statement, 1, name, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
             sqlite3_bind_double(statement, 2, max(0, hourlyRate))
-            sqlite3_bind_int64(statement, 3, id)
+            sqlite3_bind_text(statement, 3, cleanCurrency, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
+            sqlite3_bind_int64(statement, 4, id)
             guard sqlite3_step(statement) == SQLITE_DONE else { throw lastError() }
         }
     }
@@ -247,7 +257,7 @@ final class Database: @unchecked Sendable {
 
     func fetch(from start: Date? = nil, projectID: Int64? = nil) throws -> [TimeEntry] {
         try locked {
-            let base = "SELECT e.id, e.project_id, p.name, COALESCE(p.hourly_rate, 0), e.task, e.started_at, e.ended_at FROM time_entries e LEFT JOIN projects p ON p.id = e.project_id"
+            let base = "SELECT e.id, e.project_id, p.name, COALESCE(p.hourly_rate, 0), COALESCE(p.currency, 'EUR'), e.task, e.started_at, e.ended_at FROM time_entries e LEFT JOIN projects p ON p.id = e.project_id"
             let sql: String
             switch (start, projectID) {
             case (nil, nil):
@@ -275,17 +285,18 @@ final class Database: @unchecked Sendable {
             }
             var items: [TimeEntry] = []
             while sqlite3_step(statement) == SQLITE_ROW {
-                let endValue = sqlite3_column_type(statement, 6) == SQLITE_NULL
-                    ? nil : Date(timeIntervalSince1970: sqlite3_column_double(statement, 6))
-                let taskPointer = sqlite3_column_text(statement, 4)
+                let endValue = sqlite3_column_type(statement, 7) == SQLITE_NULL
+                    ? nil : Date(timeIntervalSince1970: sqlite3_column_double(statement, 7))
+                let taskPointer = sqlite3_column_text(statement, 5)
                 let task = taskPointer.map { String(cString: $0) } ?? ""
                 items.append(TimeEntry(
                     id: sqlite3_column_int64(statement, 0),
                     projectID: sqlite3_column_int64(statement, 1),
                     project: sqlite3_column_text(statement, 2).map { String(cString: $0) } ?? "General",
                     projectHourlyRate: sqlite3_column_double(statement, 3),
+                    projectCurrency: sqlite3_column_text(statement, 4).map { String(cString: $0) } ?? "EUR",
                     task: task,
-                    startedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 5)),
+                    startedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 6)),
                     endedAt: endValue
                 ))
             }
@@ -299,21 +310,22 @@ final class Database: @unchecked Sendable {
 
     private func fetchUnfinishedEntries(limit: Int) throws -> [TimeEntry] {
         try locked {
-            let sql = "SELECT e.id, e.project_id, p.name, COALESCE(p.hourly_rate, 0), e.task, e.started_at, e.ended_at FROM time_entries e LEFT JOIN projects p ON p.id = e.project_id WHERE e.ended_at IS NULL ORDER BY e.started_at DESC LIMIT ?"
+            let sql = "SELECT e.id, e.project_id, p.name, COALESCE(p.hourly_rate, 0), COALESCE(p.currency, 'EUR'), e.task, e.started_at, e.ended_at FROM time_entries e LEFT JOIN projects p ON p.id = e.project_id WHERE e.ended_at IS NULL ORDER BY e.started_at DESC LIMIT ?"
             var statement: OpaquePointer?
             guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else { throw lastError() }
             defer { sqlite3_finalize(statement) }
             sqlite3_bind_int(statement, 1, Int32(limit))
             var items: [TimeEntry] = []
             while sqlite3_step(statement) == SQLITE_ROW {
-                let taskPointer = sqlite3_column_text(statement, 4)
+                let taskPointer = sqlite3_column_text(statement, 5)
                 items.append(TimeEntry(
                     id: sqlite3_column_int64(statement, 0),
                     projectID: sqlite3_column_int64(statement, 1),
                     project: sqlite3_column_text(statement, 2).map { String(cString: $0) } ?? "General",
                     projectHourlyRate: sqlite3_column_double(statement, 3),
+                    projectCurrency: sqlite3_column_text(statement, 4).map { String(cString: $0) } ?? "EUR",
                     task: taskPointer.map { String(cString: $0) } ?? "",
-                    startedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 5)),
+                    startedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 6)),
                     endedAt: nil
                 ))
             }
@@ -325,6 +337,7 @@ final class Database: @unchecked Sendable {
         try locked {
             var hasProjectID = false
             var hasHourlyRate = false
+            var hasCurrency = false
             var statement: OpaquePointer?
             guard sqlite3_prepare_v2(handle, "PRAGMA table_info(time_entries)", -1, &statement, nil) == SQLITE_OK else { throw lastError() }
             while sqlite3_step(statement) == SQLITE_ROW {
@@ -335,9 +348,11 @@ final class Database: @unchecked Sendable {
             guard sqlite3_prepare_v2(handle, "PRAGMA table_info(projects)", -1, &statement, nil) == SQLITE_OK else { throw lastError() }
             while sqlite3_step(statement) == SQLITE_ROW {
                 if String(cString: sqlite3_column_text(statement, 1)) == "hourly_rate" { hasHourlyRate = true }
+                if String(cString: sqlite3_column_text(statement, 1)) == "currency" { hasCurrency = true }
             }
             sqlite3_finalize(statement)
             if !hasHourlyRate { try execute("ALTER TABLE projects ADD COLUMN hourly_rate REAL NOT NULL DEFAULT 0") }
+            if !hasCurrency { try execute("ALTER TABLE projects ADD COLUMN currency TEXT NOT NULL DEFAULT 'EUR'") }
             try execute("INSERT OR IGNORE INTO projects(name) VALUES ('General')")
             try execute("UPDATE time_entries SET project_id = (SELECT id FROM projects WHERE name = 'General') WHERE project_id IS NULL")
         }
@@ -349,14 +364,15 @@ final class Database: @unchecked Sendable {
 
     private func fetchBackupProjectsLocked() throws -> [BackupProject] {
         var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(handle, "SELECT id, name, hourly_rate FROM projects ORDER BY id", -1, &statement, nil) == SQLITE_OK else { throw lastError() }
+        guard sqlite3_prepare_v2(handle, "SELECT id, name, hourly_rate, currency FROM projects ORDER BY id", -1, &statement, nil) == SQLITE_OK else { throw lastError() }
         defer { sqlite3_finalize(statement) }
         var items: [BackupProject] = []
         while sqlite3_step(statement) == SQLITE_ROW {
             items.append(BackupProject(
                 id: sqlite3_column_int64(statement, 0),
                 name: sqlite3_column_text(statement, 1).map { String(cString: $0) } ?? "",
-                hourlyRate: sqlite3_column_double(statement, 2)
+                hourlyRate: sqlite3_column_double(statement, 2),
+                currency: sqlite3_column_text(statement, 3).map { String(cString: $0) } ?? "EUR"
             ))
         }
         return items
@@ -396,11 +412,12 @@ final class Database: @unchecked Sendable {
 
     private func insertBackupProjectLocked(_ project: BackupProject) throws {
         var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(handle, "INSERT INTO projects(id, name, hourly_rate) VALUES (?, ?, ?)", -1, &statement, nil) == SQLITE_OK else { throw lastError() }
+        guard sqlite3_prepare_v2(handle, "INSERT INTO projects(id, name, hourly_rate, currency) VALUES (?, ?, ?, ?)", -1, &statement, nil) == SQLITE_OK else { throw lastError() }
         defer { sqlite3_finalize(statement) }
         sqlite3_bind_int64(statement, 1, project.id)
         sqlite3_bind_text(statement, 2, project.name, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
         sqlite3_bind_double(statement, 3, max(0, project.hourlyRate))
+        sqlite3_bind_text(statement, 4, normalizedCurrency(project.currency ?? "EUR"), -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
         guard sqlite3_step(statement) == SQLITE_DONE else { throw lastError() }
     }
 
@@ -433,6 +450,11 @@ final class Database: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return try operation()
+    }
+
+    private func normalizedCurrency(_ currency: String) -> String {
+        let clean = currency.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        return clean.isEmpty ? "EUR" : clean
     }
 
     private func lastError() -> DatabaseError {

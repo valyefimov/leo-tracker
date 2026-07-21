@@ -4,11 +4,11 @@ import XCTest
 
 final class ExportServiceTests: XCTestCase {
     func testCSVEscapesQuotesAndCommas() {
-        let item = TimeEntry(id: 1, projectID: 1, project: "LeoTracker", projectHourlyRate: 100, task: "Design, \"home\"", startedAt: Date(timeIntervalSince1970: 0), endedAt: Date(timeIntervalSince1970: 90))
+        let item = TimeEntry(id: 1, projectID: 1, project: "LeoTracker", projectHourlyRate: 100, projectCurrency: "EUR", task: "Design, \"home\"", startedAt: Date(timeIntervalSince1970: 0), endedAt: Date(timeIntervalSince1970: 90))
         let result = ExportService.csv(entries: [item])
         XCTAssertTrue(result.contains("\"Design, \"\"home\"\"\""))
-        XCTAssertTrue(result.contains("Date,Project,Task,Started,Ended,Hours,Rate/hour,Amount,Duration"))
-        XCTAssertTrue(result.contains(",\"0\",\"100\",\"0\","))
+        XCTAssertTrue(result.contains("Date,Project,Task,Started,Ended,Hours,Rate/hour,Currency,Amount,Duration"))
+        XCTAssertTrue(result.contains(",\"0\",\"100\",\"EUR\",\"0\","))
     }
 
     func testCSVExportsQuarterHourUnits() {
@@ -25,7 +25,7 @@ final class ExportServiceTests: XCTestCase {
     }
 
     func testCSVExportsSelectedColumnsOnly() {
-        let item = TimeEntry(id: 1, projectID: 1, project: "LeoTracker", projectHourlyRate: 100, task: "Build", startedAt: Date(timeIntervalSince1970: 0), endedAt: Date(timeIntervalSince1970: 60 * 60))
+        let item = TimeEntry(id: 1, projectID: 1, project: "LeoTracker", projectHourlyRate: 100, projectCurrency: "EUR", task: "Build", startedAt: Date(timeIntervalSince1970: 0), endedAt: Date(timeIntervalSince1970: 60 * 60))
         let result = ExportService.csv(entries: [item], columns: [.project, .hours, .amount])
 
         XCTAssertTrue(result.hasPrefix("Project,Hours,Amount"))

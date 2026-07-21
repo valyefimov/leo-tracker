@@ -5,6 +5,7 @@ struct TimeEntry: Identifiable, Hashable, Sendable {
     var projectID: Int64
     var project: String
     var projectHourlyRate: Double
+    var projectCurrency: String
     var task: String
     var startedAt: Date
     var endedAt: Date?
@@ -18,6 +19,7 @@ struct Project: Identifiable, Hashable, Sendable {
     let id: Int64
     var name: String
     var hourlyRate: Double
+    var currency: String
 }
 
 enum ExportColumn: String, CaseIterable, Identifiable, Sendable {
@@ -28,6 +30,7 @@ enum ExportColumn: String, CaseIterable, Identifiable, Sendable {
     case ended
     case hours
     case rate
+    case currency
     case amount
     case duration
 
@@ -42,6 +45,7 @@ enum ExportColumn: String, CaseIterable, Identifiable, Sendable {
         case .ended: "Ended"
         case .hours: "Hours"
         case .rate: "Rate/hour"
+        case .currency: "Currency"
         case .amount: "Amount"
         case .duration: "Duration"
         }
@@ -102,6 +106,7 @@ struct BackupProject: Codable, Sendable {
     var id: Int64
     var name: String
     var hourlyRate: Double
+    var currency: String?
 }
 
 struct BackupTimeEntry: Codable, Sendable {

@@ -48,6 +48,7 @@ enum ExportService {
         case .ended: entry.endedAt.map(formatter.string(from:)) ?? ""
         case .hours: escape(exportHours(entry.duration))
         case .rate: escape(formatDecimal(entry.projectHourlyRate))
+        case .currency: escape(entry.projectCurrency)
         case .amount: escape(exportAmount(duration: entry.duration, hourlyRate: entry.projectHourlyRate))
         case .duration: entry.duration.clockText
         }
