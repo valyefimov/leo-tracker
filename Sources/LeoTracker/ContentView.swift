@@ -5,11 +5,16 @@ struct ContentView: View {
     @State private var selection = "Tracker"
     @State private var showingNewProject = false
     @State private var newProjectName = ""
+    @State private var newProjectRate = ""
     @State private var entryToDelete: TimeEntry?
     @State private var entryToEdit: TimeEntry?
     @State private var editTask = ""
     @State private var editStartedAt = Date()
     @State private var editEndedAt = Date()
+    @State private var projectToEdit: Project?
+    @State private var editProjectName = ""
+    @State private var editProjectRate = ""
+    @State private var projectToDelete: Project?
 
     var body: some View {
         NavigationSplitView {
@@ -27,6 +32,7 @@ struct ContentView: View {
 
                 navItem("Tracker", icon: "stopwatch.fill")
                 navItem("Reports", icon: "chart.bar.xaxis")
+                navItem("Settings", icon: "gearshape.fill")
                 Spacer()
                 Label("Data stays on this Mac", systemImage: "lock.fill")
                     .font(.caption).foregroundStyle(.secondary).padding(8)
@@ -34,7 +40,13 @@ struct ContentView: View {
             .padding(18)
             .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 240)
         } detail: {
-            Group { selection == "Tracker" ? AnyView(tracker) : AnyView(reports) }
+            Group {
+                switch selection {
+                case "Reports": AnyView(reports)
+                case "Settings": AnyView(settings)
+                default: AnyView(tracker)
+                }
+            }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color(nsColor: .windowBackgroundColor))
         }
@@ -53,6 +65,8 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 18) {
                 Text("New Project").font(.title2.bold())
                 TextField("Project name", text: $newProjectName).textFieldStyle(.roundedBorder).onSubmit { createProject() }
+                TextField("Rate per hour", text: $newProjectRate)
+                    .textFieldStyle(.roundedBorder)
                 HStack {
                     Spacer()
                     Button("Cancel") { showingNewProject = false }
@@ -68,6 +82,10 @@ struct ContentView: View {
             Button("Delete", role: .destructive) { if let entryToDelete { store.delete(entry: entryToDelete) }; entryToDelete = nil }
             Button("Cancel", role: .cancel) { entryToDelete = nil }
         } message: { Text("This session will be permanently removed.") }
+        .alert("Delete project?", isPresented: Binding(get: { projectToDelete != nil }, set: { if !$0 { projectToDelete = nil } })) {
+            Button("Delete", role: .destructive) { if let projectToDelete { store.delete(project: projectToDelete) }; projectToDelete = nil }
+            Button("Cancel", role: .cancel) { projectToDelete = nil }
+        } message: { Text("Sessions from this project will be moved to another project, not deleted.") }
         .sheet(item: $entryToEdit) { entry in
             VStack(alignment: .leading, spacing: 18) {
                 Text("Edit Session").font(.title2.bold())
@@ -99,6 +117,31 @@ struct ContentView: View {
             .padding(24)
             .frame(width: 420)
         }
+        .sheet(item: $projectToEdit) { project in
+            VStack(alignment: .leading, spacing: 18) {
+                Text("Edit Project").font(.title2.bold())
+                TextField("Project name", text: $editProjectName)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit {
+                        if saveProject(project) { projectToEdit = nil }
+                    }
+                TextField("Rate per hour", text: $editProjectRate)
+                    .textFieldStyle(.roundedBorder)
+                HStack {
+                    Spacer()
+                    Button("Cancel") { projectToEdit = nil }
+                        .pointingHandCursor()
+                    Button("Save") {
+                        if saveProject(project) { projectToEdit = nil }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(LeoTheme.green)
+                    .pointingHandCursor()
+                }
+            }
+            .padding(24)
+            .frame(width: 380)
+        }
     }
 
     private var tracker: some View {
@@ -126,7 +169,7 @@ struct ContentView: View {
                         HStack(spacing: 10) {
                             Picker("Project", selection: $store.selectedProjectID) { ForEach(store.projects) { Text($0.name).tag(Optional($0.id)) } }
                                 .labelsHidden().frame(maxWidth: 230).disabled(store.isTracking).pointingHandCursor(!store.isTracking)
-                            Button("New Project", systemImage: "plus") { newProjectName = ""; showingNewProject = true }.disabled(store.isTracking).pointingHandCursor(!store.isTracking)
+                            Button("New Project", systemImage: "plus") { newProjectName = ""; newProjectRate = ""; showingNewProject = true }.disabled(store.isTracking).pointingHandCursor(!store.isTracking)
                         }
                         TextField("What are you working on?", text: $store.task, axis: .vertical)
                             .textFieldStyle(.plain).font(.title3).padding(15)
@@ -184,12 +227,80 @@ struct ContentView: View {
                 HStack(spacing: 16) {
                     metric("Total time", value: store.totalReportDuration.shortText, icon: "clock.fill")
                     metric("Hours", value: store.totalReportDuration.hoursText, icon: "calendar.badge.clock")
+                    metric("Amount", value: store.totalReportAmount.moneyText, icon: "banknote.fill")
                     metric("Sessions", value: "\(reportEntries.count)", icon: "checkmark.circle.fill")
                     metric("Average", value: (reportEntries.isEmpty ? 0 : store.totalReportDuration / Double(reportEntries.count)).shortText, icon: "chart.line.uptrend.xyaxis")
                 }
                 ReportCalendar(days: reportCalendarDays, totals: dailyDurations)
                 sessionsList(entries: reportEntries)
             }.padding(34).frame(maxWidth: 980)
+        }
+    }
+
+    private var settings: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Settings").font(.system(size: 30, weight: .bold, design: .rounded))
+                    Text("Manage projects used for tracking and reports.").foregroundStyle(.secondary)
+                }
+                Card {
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Projects").font(.headline)
+                                Text("Edit names, add projects, or remove projects without deleting sessions.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button("Add Project", systemImage: "plus") {
+                                newProjectName = ""
+                                newProjectRate = ""
+                                showingNewProject = true
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(LeoTheme.green)
+                            .pointingHandCursor()
+                        }
+                        if store.projects.isEmpty {
+                            ContentUnavailableView("No projects", systemImage: "folder.badge.questionmark", description: Text("Add a project to start tracking."))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 24)
+                        } else {
+                            ForEach(Array(store.projects.enumerated()), id: \.element.id) { index, project in
+                                if index > 0 { Divider() }
+                                HStack(spacing: 14) {
+                                    Image(systemName: project.id == store.selectedProjectID ? "folder.fill" : "folder")
+                                        .foregroundStyle(LeoTheme.green)
+                                        .frame(width: 22)
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(project.name).fontWeight(.medium).textSelection(.enabled)
+                                        Text("\(project.id == store.selectedProjectID ? "Selected for tracking" : "Available project") · \(project.hourlyRate.moneyText)/h")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    Button("Edit", systemImage: "pencil") { beginEditing(project) }
+                                        .labelStyle(.iconOnly)
+                                        .buttonStyle(.borderless)
+                                        .help("Edit project")
+                                        .pointingHandCursor()
+                                    Button("Delete", systemImage: "trash", role: .destructive) { projectToDelete = project }
+                                        .labelStyle(.iconOnly)
+                                        .buttonStyle(.borderless)
+                                        .disabled(store.projects.count <= 1 || store.activeEntry?.projectID == project.id)
+                                        .help("Delete project")
+                                        .pointingHandCursor(store.projects.count > 1 && store.activeEntry?.projectID != project.id)
+                                }
+                                .padding(.vertical, 12)
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(34)
+            .frame(maxWidth: 880)
         }
     }
 
@@ -248,7 +359,11 @@ struct ContentView: View {
     }
 
     private func createProject() {
-        store.createProject(named: newProjectName)
+        guard let hourlyRate = decimalValue(newProjectRate) else {
+            store.errorMessage = "Enter a valid rate per hour."
+            return
+        }
+        store.createProject(named: newProjectName, hourlyRate: hourlyRate)
         showingNewProject = false
     }
 
@@ -257,6 +372,26 @@ struct ContentView: View {
         editStartedAt = entry.startedAt
         editEndedAt = entry.endedAt ?? Date()
         entryToEdit = entry
+    }
+
+    private func beginEditing(_ project: Project) {
+        editProjectName = project.name
+        editProjectRate = project.hourlyRate.moneyText
+        projectToEdit = project
+    }
+
+    private func saveProject(_ project: Project) -> Bool {
+        guard let hourlyRate = decimalValue(editProjectRate) else {
+            store.errorMessage = "Enter a valid rate per hour."
+            return false
+        }
+        return store.update(project: project, name: editProjectName, hourlyRate: hourlyRate)
+    }
+
+    private func decimalValue(_ text: String) -> Double? {
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return 0 }
+        return Double(clean.replacingOccurrences(of: ",", with: "."))
     }
 
     private var dailyDurations: [Date: TimeInterval] {

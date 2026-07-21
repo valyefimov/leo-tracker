@@ -4,6 +4,7 @@ struct TimeEntry: Identifiable, Hashable, Sendable {
     let id: Int64
     var projectID: Int64
     var project: String
+    var projectHourlyRate: Double
     var task: String
     var startedAt: Date
     var endedAt: Date?
@@ -16,6 +17,7 @@ struct TimeEntry: Identifiable, Hashable, Sendable {
 struct Project: Identifiable, Hashable, Sendable {
     let id: Int64
     var name: String
+    var hourlyRate: Double
 }
 
 enum ReportRange: String, CaseIterable, Identifiable {
@@ -51,5 +53,11 @@ extension TimeInterval {
 
     var hoursText: String {
         String(format: "%.2f h", max(0, self) / 3600)
+    }
+}
+
+extension Double {
+    var moneyText: String {
+        String(format: "%.2f", self).replacingOccurrences(of: ".", with: ",")
     }
 }

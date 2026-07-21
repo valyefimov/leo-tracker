@@ -52,6 +52,9 @@ final class TrackerStore: ObservableObject {
         return entries.filter { $0.projectID == reportProjectID }
     }
     var totalReportDuration: TimeInterval { reportEntries.reduce(0) { $0 + $1.duration } }
+    var totalReportAmount: Double {
+        reportEntries.reduce(0) { $0 + ExportService.roundedQuarterHours($1.duration) * $1.projectHourlyRate }
+    }
     var idleLimit: TimeInterval? { autoStopMinutes > 0 ? TimeInterval(autoStopMinutes * 60) : nil }
     var autoStopDescription: String { autoStopMinutes > 0 ? "Auto-stops after \(autoStopMinutes) minutes inactive" : "Auto-stop is off" }
 
@@ -72,8 +75,8 @@ final class TrackerStore: ObservableObject {
         do {
             let date = Date()
             let id = try database.insert(projectID: projectID, task: cleanTask, startedAt: date)
-            let project = projects.first(where: { $0.id == projectID })?.name ?? "General"
-            activeEntry = TimeEntry(id: id, projectID: projectID, project: project, task: cleanTask, startedAt: date, endedAt: nil)
+            let project = projects.first(where: { $0.id == projectID })
+            activeEntry = TimeEntry(id: id, projectID: projectID, project: project?.name ?? "General", projectHourlyRate: project?.hourlyRate ?? 0, task: cleanTask, startedAt: date, endedAt: nil)
             now = date
             autoStopMessage = nil
             reload()
@@ -121,22 +124,60 @@ final class TrackerStore: ObservableObject {
         do {
             try database.updateEntry(id: entry.id, task: cleanTask, startedAt: startedAt, endedAt: endedAt)
             if activeEntry?.id == entry.id {
-                activeEntry = TimeEntry(id: entry.id, projectID: entry.projectID, project: entry.project, task: cleanTask, startedAt: startedAt, endedAt: endedAt)
+                activeEntry = TimeEntry(id: entry.id, projectID: entry.projectID, project: entry.project, projectHourlyRate: entry.projectHourlyRate, task: cleanTask, startedAt: startedAt, endedAt: endedAt)
                 self.task = cleanTask
             }
             reload()
         } catch { errorMessage = error.localizedDescription }
     }
 
-    func createProject(named name: String) {
+    func createProject(named name: String, hourlyRate: Double = 0) {
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanName.isEmpty else { return }
         do {
-            let project = try database.insertProject(name: cleanName)
+            let project = try database.insertProject(name: cleanName, hourlyRate: hourlyRate)
             projects = try database.fetchProjects()
             selectedProjectID = project.id
             reportProjectID = project.id
         } catch { errorMessage = "Could not create project: \(error.localizedDescription)" }
+    }
+
+    func update(project: Project, name: String, hourlyRate: Double) -> Bool {
+        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanName.isEmpty else {
+            errorMessage = "Project name cannot be empty."
+            return false
+        }
+        guard hourlyRate >= 0 else {
+            errorMessage = "Rate per hour cannot be negative."
+            return false
+        }
+        do {
+            try database.updateProject(id: project.id, name: cleanName, hourlyRate: hourlyRate)
+            reload()
+            return true
+        } catch {
+            errorMessage = "Could not update project: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    func delete(project: Project) {
+        guard projects.count > 1 else {
+            errorMessage = "Create another project before deleting this one."
+            return
+        }
+        guard activeEntry?.projectID != project.id else {
+            errorMessage = "Stop the active session before deleting its project."
+            return
+        }
+        guard let fallbackProjectID = projects.first(where: { $0.id != project.id })?.id else { return }
+        do {
+            try database.deleteProject(id: project.id, fallbackProjectID: fallbackProjectID)
+            if selectedProjectID == project.id { selectedProjectID = fallbackProjectID }
+            if reportProjectID == project.id { reportProjectID = fallbackProjectID }
+            reload()
+        } catch { errorMessage = "Could not delete project: \(error.localizedDescription)" }
     }
 
     func exportCSV(entries: [TimeEntry]) { save(data: Data(("\u{FEFF}" + ExportService.csv(entries: entries)).utf8), name: "leo-report.csv", type: "csv") }

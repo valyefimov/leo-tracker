@@ -10,22 +10,36 @@ enum ExportService {
                 escape(entry.task),
                 formatter.string(from: entry.startedAt),
                 entry.endedAt.map(formatter.string(from:)) ?? "",
-                exportHours(entry.duration),
+                escape(exportHours(entry.duration)),
+                escape(formatDecimal(entry.projectHourlyRate)),
+                escape(exportAmount(duration: entry.duration, hourlyRate: entry.projectHourlyRate)),
                 entry.duration.clockText
             ].joined(separator: ",")
         }
-        return (["Date,Project,Task,Started,Ended,Hours,Duration"] + rows).joined(separator: "\n")
+        return (["Date,Project,Task,Started,Ended,Hours,Rate/hour,Amount,Duration"] + rows).joined(separator: "\n")
     }
 
     static func exportHours(_ duration: TimeInterval) -> String {
-        let roundedQuarterHours = (max(0, duration) / 3600 / 0.25).rounded() * 0.25
-        if roundedQuarterHours.rounded() == roundedQuarterHours {
-            return String(Int(roundedQuarterHours))
+        formatDecimal(roundedQuarterHours(duration))
+    }
+
+    static func roundedQuarterHours(_ duration: TimeInterval) -> Double {
+        (max(0, duration) / 3600 / 0.25).rounded() * 0.25
+    }
+
+    static func exportAmount(duration: TimeInterval, hourlyRate: Double) -> String {
+        formatDecimal(roundedQuarterHours(duration) * max(0, hourlyRate))
+    }
+
+    static func formatDecimal(_ value: Double) -> String {
+        let roundedValue = (max(0, value) * 100).rounded() / 100
+        if roundedValue.rounded() == roundedValue {
+            return String(Int(roundedValue))
         }
-        if (roundedQuarterHours * 10).rounded() == roundedQuarterHours * 10 {
-            return String(format: "%.1f", roundedQuarterHours)
+        if (roundedValue * 10).rounded() == roundedValue * 10 {
+            return String(format: "%.1f", roundedValue).replacingOccurrences(of: ".", with: ",")
         }
-        return String(format: "%.2f", roundedQuarterHours)
+        return String(format: "%.2f", roundedValue).replacingOccurrences(of: ".", with: ",")
     }
 
     private static func dateOnly(_ date: Date) -> String { formatted(date, format: "yyyy-MM-dd") }
