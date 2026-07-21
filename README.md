@@ -1,5 +1,7 @@
 # Leo Tracker
 
+<img width="1146" height="674" alt="image" src="https://github.com/user-attachments/assets/5ab3863a-b52c-4fc3-8712-8cd0ab30a843" />
+
 Native macOS time tracker built with SwiftUI. Sessions are stored locally in SQLite. The app includes automatic stop after 5 minutes of system inactivity, reports, and export to CSV / Excel-compatible `.xls`.
 
 ## Requirements
