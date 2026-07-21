@@ -10,14 +10,23 @@ enum ExportService {
                 escape(entry.task),
                 formatter.string(from: entry.startedAt),
                 entry.endedAt.map(formatter.string(from:)) ?? "",
-                String(exportUnits(entry.duration)),
+                exportHours(entry.duration),
                 entry.duration.clockText
             ].joined(separator: ",")
         }
-        return (["Date,Project,Task,Started,Ended,Units (100 = 1 hour),Duration"] + rows).joined(separator: "\n")
+        return (["Date,Project,Task,Started,Ended,Hours,Duration"] + rows).joined(separator: "\n")
     }
 
-    static func exportUnits(_ duration: TimeInterval) -> Int { Int((duration / 36).rounded()) }
+    static func exportHours(_ duration: TimeInterval) -> String {
+        let roundedQuarterHours = (max(0, duration) / 3600 / 0.25).rounded() * 0.25
+        if roundedQuarterHours.rounded() == roundedQuarterHours {
+            return String(Int(roundedQuarterHours))
+        }
+        if (roundedQuarterHours * 10).rounded() == roundedQuarterHours * 10 {
+            return String(format: "%.1f", roundedQuarterHours)
+        }
+        return String(format: "%.2f", roundedQuarterHours)
+    }
 
     private static func dateOnly(_ date: Date) -> String { formatted(date, format: "yyyy-MM-dd") }
     private static func csvDate(_ date: Date) -> String { dateOnly(date) }
