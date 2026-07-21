@@ -10,6 +10,7 @@ final class TrackerStore: ObservableObject {
     @Published private(set) var entries: [TimeEntry] = []
     @Published private(set) var projects: [Project] = []
     @Published var selectedProjectID: Int64?
+    @Published var reportProjectID: Int64?
     @Published private(set) var activeEntry: TimeEntry?
     @Published private(set) var now = Date()
     @Published var range: ReportRange = .week { didSet { reload() } }
@@ -46,6 +47,11 @@ final class TrackerStore: ObservableObject {
     var isTracking: Bool { activeEntry != nil }
     var elapsed: TimeInterval { activeEntry.map { now.timeIntervalSince($0.startedAt) } ?? 0 }
     var totalDuration: TimeInterval { entries.reduce(0) { $0 + $1.duration } }
+    var reportEntries: [TimeEntry] {
+        guard let reportProjectID else { return [] }
+        return entries.filter { $0.projectID == reportProjectID }
+    }
+    var totalReportDuration: TimeInterval { reportEntries.reduce(0) { $0 + $1.duration } }
     var idleLimit: TimeInterval? { autoStopMinutes > 0 ? TimeInterval(autoStopMinutes * 60) : nil }
     var autoStopDescription: String { autoStopMinutes > 0 ? "Auto-stops after \(autoStopMinutes) minutes inactive" : "Auto-stop is off" }
 
@@ -67,7 +73,7 @@ final class TrackerStore: ObservableObject {
             let date = Date()
             let id = try database.insert(projectID: projectID, task: cleanTask, startedAt: date)
             let project = projects.first(where: { $0.id == projectID })?.name ?? "General"
-            activeEntry = TimeEntry(id: id, project: project, task: cleanTask, startedAt: date, endedAt: nil)
+            activeEntry = TimeEntry(id: id, projectID: projectID, project: project, task: cleanTask, startedAt: date, endedAt: nil)
             now = date
             autoStopMessage = nil
             reload()
@@ -80,9 +86,7 @@ final class TrackerStore: ObservableObject {
             return
         }
         task = entry.task
-        if let project = projects.first(where: { $0.name == entry.project }) {
-            selectedProjectID = project.id
-        }
+        selectedProjectID = entry.projectID
         start()
     }
 
@@ -104,15 +108,21 @@ final class TrackerStore: ObservableObject {
         catch { errorMessage = error.localizedDescription }
     }
 
-    func update(entry: TimeEntry, startedAt: Date, endedAt: Date?) {
+    func update(entry: TimeEntry, task: String, startedAt: Date, endedAt: Date?) {
+        let cleanTask = task.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanTask.isEmpty else {
+            errorMessage = "Session name cannot be empty."
+            return
+        }
         if let endedAt, endedAt < startedAt {
             errorMessage = "End time must be after start time."
             return
         }
         do {
-            try database.updateEntryTime(id: entry.id, startedAt: startedAt, endedAt: endedAt)
+            try database.updateEntry(id: entry.id, task: cleanTask, startedAt: startedAt, endedAt: endedAt)
             if activeEntry?.id == entry.id {
-                activeEntry = TimeEntry(id: entry.id, project: entry.project, task: entry.task, startedAt: startedAt, endedAt: endedAt)
+                activeEntry = TimeEntry(id: entry.id, projectID: entry.projectID, project: entry.project, task: cleanTask, startedAt: startedAt, endedAt: endedAt)
+                self.task = cleanTask
             }
             reload()
         } catch { errorMessage = error.localizedDescription }
@@ -125,10 +135,11 @@ final class TrackerStore: ObservableObject {
             let project = try database.insertProject(name: cleanName)
             projects = try database.fetchProjects()
             selectedProjectID = project.id
+            reportProjectID = project.id
         } catch { errorMessage = "Could not create project: \(error.localizedDescription)" }
     }
 
-    func exportCSV() { save(data: Data(("\u{FEFF}" + ExportService.csv(entries: entries)).utf8), name: "leo-report.csv", type: "csv") }
+    func exportCSV(entries: [TimeEntry]) { save(data: Data(("\u{FEFF}" + ExportService.csv(entries: entries)).utf8), name: "leo-report.csv", type: "csv") }
 
     private func tick() {
         now = Date()
@@ -146,6 +157,9 @@ final class TrackerStore: ObservableObject {
             projects = try database.fetchProjects()
             if selectedProjectID == nil || !projects.contains(where: { $0.id == selectedProjectID }) {
                 selectedProjectID = projects.first?.id
+            }
+            if reportProjectID == nil || !projects.contains(where: { $0.id == reportProjectID }) {
+                reportProjectID = selectedProjectID ?? projects.first?.id
             }
             entries = try database.fetch(from: range.startDate())
         }

@@ -100,19 +100,20 @@ final class Database: @unchecked Sendable {
         }
     }
 
-    func updateEntryTime(id: Int64, startedAt: Date, endedAt: Date?) throws {
+    func updateEntry(id: Int64, task: String, startedAt: Date, endedAt: Date?) throws {
         try locked {
-            let sql = "UPDATE time_entries SET started_at = ?, ended_at = ? WHERE id = ?"
+            let sql = "UPDATE time_entries SET task = ?, started_at = ?, ended_at = ? WHERE id = ?"
             var statement: OpaquePointer?
             guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else { throw lastError() }
             defer { sqlite3_finalize(statement) }
-            sqlite3_bind_double(statement, 1, startedAt.timeIntervalSince1970)
+            sqlite3_bind_text(statement, 1, task, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
+            sqlite3_bind_double(statement, 2, startedAt.timeIntervalSince1970)
             if let endedAt {
-                sqlite3_bind_double(statement, 2, endedAt.timeIntervalSince1970)
+                sqlite3_bind_double(statement, 3, endedAt.timeIntervalSince1970)
             } else {
-                sqlite3_bind_null(statement, 2)
+                sqlite3_bind_null(statement, 3)
             }
-            sqlite3_bind_int64(statement, 3, id)
+            sqlite3_bind_int64(statement, 4, id)
             guard sqlite3_step(statement) == SQLITE_DONE else { throw lastError() }
         }
     }
@@ -120,23 +121,24 @@ final class Database: @unchecked Sendable {
     func fetch(from start: Date? = nil) throws -> [TimeEntry] {
         try locked {
             let sql = start == nil
-                ? "SELECT e.id, p.name, e.task, e.started_at, e.ended_at FROM time_entries e LEFT JOIN projects p ON p.id = e.project_id ORDER BY e.started_at DESC"
-                : "SELECT e.id, p.name, e.task, e.started_at, e.ended_at FROM time_entries e LEFT JOIN projects p ON p.id = e.project_id WHERE e.started_at >= ? ORDER BY e.started_at DESC"
+                ? "SELECT e.id, e.project_id, p.name, e.task, e.started_at, e.ended_at FROM time_entries e LEFT JOIN projects p ON p.id = e.project_id ORDER BY e.started_at DESC"
+                : "SELECT e.id, e.project_id, p.name, e.task, e.started_at, e.ended_at FROM time_entries e LEFT JOIN projects p ON p.id = e.project_id WHERE e.started_at >= ? ORDER BY e.started_at DESC"
             var statement: OpaquePointer?
             guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else { throw lastError() }
             defer { sqlite3_finalize(statement) }
             if let start { sqlite3_bind_double(statement, 1, start.timeIntervalSince1970) }
             var items: [TimeEntry] = []
             while sqlite3_step(statement) == SQLITE_ROW {
-                let endValue = sqlite3_column_type(statement, 4) == SQLITE_NULL
-                    ? nil : Date(timeIntervalSince1970: sqlite3_column_double(statement, 4))
-                let taskPointer = sqlite3_column_text(statement, 2)
+                let endValue = sqlite3_column_type(statement, 5) == SQLITE_NULL
+                    ? nil : Date(timeIntervalSince1970: sqlite3_column_double(statement, 5))
+                let taskPointer = sqlite3_column_text(statement, 3)
                 let task = taskPointer.map { String(cString: $0) } ?? ""
                 items.append(TimeEntry(
                     id: sqlite3_column_int64(statement, 0),
-                    project: sqlite3_column_text(statement, 1).map { String(cString: $0) } ?? "General",
+                    projectID: sqlite3_column_int64(statement, 1),
+                    project: sqlite3_column_text(statement, 2).map { String(cString: $0) } ?? "General",
                     task: task,
-                    startedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 3)),
+                    startedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 4)),
                     endedAt: endValue
                 ))
             }

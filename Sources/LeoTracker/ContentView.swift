@@ -7,6 +7,7 @@ struct ContentView: View {
     @State private var newProjectName = ""
     @State private var entryToDelete: TimeEntry?
     @State private var entryToEdit: TimeEntry?
+    @State private var editTask = ""
     @State private var editStartedAt = Date()
     @State private var editEndedAt = Date()
 
@@ -45,13 +46,22 @@ struct ContentView: View {
                 Text(message).font(.callout.weight(.medium)).padding(.horizontal, 16).padding(.vertical, 10)
                     .background(.orange.opacity(0.92), in: Capsule()).foregroundStyle(.white).padding(.top, 12)
                     .onTapGesture { store.autoStopMessage = nil }
+                    .pointingHandCursor()
             }
         }
         .sheet(isPresented: $showingNewProject) {
             VStack(alignment: .leading, spacing: 18) {
                 Text("New Project").font(.title2.bold())
                 TextField("Project name", text: $newProjectName).textFieldStyle(.roundedBorder).onSubmit { createProject() }
-                HStack { Spacer(); Button("Cancel") { showingNewProject = false }; Button("Create") { createProject() }.buttonStyle(.borderedProminent).tint(LeoTheme.green) }
+                HStack {
+                    Spacer()
+                    Button("Cancel") { showingNewProject = false }
+                        .pointingHandCursor()
+                    Button("Create") { createProject() }
+                        .buttonStyle(.borderedProminent)
+                        .tint(LeoTheme.green)
+                        .pointingHandCursor()
+                }
             }.padding(24).frame(width: 360)
         }
         .alert("Delete session?", isPresented: Binding(get: { entryToDelete != nil }, set: { if !$0 { entryToDelete = nil } })) {
@@ -60,11 +70,14 @@ struct ContentView: View {
         } message: { Text("This session will be permanently removed.") }
         .sheet(item: $entryToEdit) { entry in
             VStack(alignment: .leading, spacing: 18) {
-                Text("Edit Session Time").font(.title2.bold())
-                Text(entry.task).font(.headline).lineLimit(2).textSelection(.enabled)
+                Text("Edit Session").font(.title2.bold())
+                TextField("Session name", text: $editTask, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
                 DatePicker("Start", selection: $editStartedAt, displayedComponents: [.date, .hourAndMinute])
+                    .pointingHandCursor()
                 if entry.endedAt != nil {
                     DatePicker("End", selection: $editEndedAt, displayedComponents: [.date, .hourAndMinute])
+                        .pointingHandCursor()
                 } else {
                     Text("Active session: only the start time can be edited.")
                         .font(.caption)
@@ -73,12 +86,14 @@ struct ContentView: View {
                 HStack {
                     Spacer()
                     Button("Cancel") { entryToEdit = nil }
+                        .pointingHandCursor()
                     Button("Save") {
-                        store.update(entry: entry, startedAt: editStartedAt, endedAt: entry.endedAt == nil ? nil : editEndedAt)
+                        store.update(entry: entry, task: editTask, startedAt: editStartedAt, endedAt: entry.endedAt == nil ? nil : editEndedAt)
                         entryToEdit = nil
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(LeoTheme.green)
+                    .pointingHandCursor()
                 }
             }
             .padding(24)
@@ -106,12 +121,12 @@ struct ContentView: View {
                                 Image(systemName: store.isTracking ? "stop.fill" : "play.fill")
                                     .font(.title2.bold()).frame(width: 58, height: 58)
                                     .foregroundStyle(.white).background(store.isTracking ? Color.red : LeoTheme.green, in: Circle())
-                            }.buttonStyle(.plain).help(store.isTracking ? "Stop" : "Start")
+                            }.buttonStyle(.plain).help(store.isTracking ? "Stop" : "Start").pointingHandCursor()
                         }
                         HStack(spacing: 10) {
                             Picker("Project", selection: $store.selectedProjectID) { ForEach(store.projects) { Text($0.name).tag(Optional($0.id)) } }
-                                .labelsHidden().frame(maxWidth: 230).disabled(store.isTracking)
-                            Button("New Project", systemImage: "plus") { newProjectName = ""; showingNewProject = true }.disabled(store.isTracking)
+                                .labelsHidden().frame(maxWidth: 230).disabled(store.isTracking).pointingHandCursor(!store.isTracking)
+                            Button("New Project", systemImage: "plus") { newProjectName = ""; showingNewProject = true }.disabled(store.isTracking).pointingHandCursor(!store.isTracking)
                         }
                         TextField("What are you working on?", text: $store.task, axis: .vertical)
                             .textFieldStyle(.plain).font(.title3).padding(15)
@@ -131,17 +146,19 @@ struct ContentView: View {
                             .labelsHidden()
                             .pickerStyle(.menu)
                             .frame(width: 100)
+                            .pointingHandCursor()
                             Text("Today: \(store.entries.filter { Calendar.current.isDateInToday($0.startedAt) }.reduce(0) { $0 + $1.duration }.shortText)").fontWeight(.semibold)
                         }.font(.callout).foregroundStyle(.secondary)
                     }
                 }
-                latestEntries
+                sessionsList(entries: store.entries)
             }.padding(34).frame(maxWidth: 880)
         }
     }
 
     private var reports: some View {
-        ScrollView {
+        let reportEntries = store.reportEntries
+        return ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 HStack {
                     VStack(alignment: .leading, spacing: 5) {
@@ -150,32 +167,41 @@ struct ContentView: View {
                     }
                     Spacer()
                     Menu("Export", systemImage: "square.and.arrow.up") {
-                        Button("CSV") { store.exportCSV() }
-                    }.buttonStyle(.borderedProminent).tint(LeoTheme.green)
+                        Button("CSV") { store.exportCSV(entries: reportEntries) }
+                    }.buttonStyle(.borderedProminent).tint(LeoTheme.green).pointingHandCursor()
                 }
-                Picker("Period", selection: $store.range) { ForEach(ReportRange.allCases) { Text($0.rawValue).tag($0) } }
-                    .pickerStyle(.segmented).frame(maxWidth: 520)
+                HStack(spacing: 12) {
+                    Picker("Project", selection: $store.reportProjectID) {
+                        ForEach(store.projects) { project in
+                            Text(project.name).tag(Optional(project.id))
+                        }
+                    }
+                    .frame(maxWidth: 260)
+                    .pointingHandCursor()
+                    Picker("Period", selection: $store.range) { ForEach(ReportRange.allCases) { Text($0.rawValue).tag($0) } }
+                        .pickerStyle(.segmented).frame(maxWidth: 520).pointingHandCursor()
+                }
                 HStack(spacing: 16) {
-                    metric("Total time", value: store.totalDuration.shortText, icon: "clock.fill")
-                    metric("Hours", value: store.totalDuration.hoursText, icon: "calendar.badge.clock")
-                    metric("Sessions", value: "\(store.entries.count)", icon: "checkmark.circle.fill")
-                    metric("Average", value: (store.entries.isEmpty ? 0 : store.totalDuration / Double(store.entries.count)).shortText, icon: "chart.line.uptrend.xyaxis")
+                    metric("Total time", value: store.totalReportDuration.shortText, icon: "clock.fill")
+                    metric("Hours", value: store.totalReportDuration.hoursText, icon: "calendar.badge.clock")
+                    metric("Sessions", value: "\(reportEntries.count)", icon: "checkmark.circle.fill")
+                    metric("Average", value: (reportEntries.isEmpty ? 0 : store.totalReportDuration / Double(reportEntries.count)).shortText, icon: "chart.line.uptrend.xyaxis")
                 }
                 ReportCalendar(days: reportCalendarDays, totals: dailyDurations)
-                latestEntries
+                sessionsList(entries: reportEntries)
             }.padding(34).frame(maxWidth: 980)
         }
     }
 
-    private var latestEntries: some View {
+    private func sessionsList(entries: [TimeEntry]) -> some View {
         Card {
             VStack(alignment: .leading, spacing: 0) {
                 Text("Sessions").font(.headline).padding(.bottom, 12)
-                if store.entries.isEmpty {
+                if entries.isEmpty {
                     ContentUnavailableView("No sessions yet", systemImage: "clock.badge.questionmark", description: Text("Start your first work session."))
                         .frame(maxWidth: .infinity).padding(.vertical, 24)
                 } else {
-                    ForEach(Array(store.entries.prefix(20).enumerated()), id: \.element.id) { index, entry in
+                    ForEach(Array(entries.prefix(20).enumerated()), id: \.element.id) { index, entry in
                         if index > 0 { Divider() }
                         HStack(spacing: 14) {
                             Circle().fill(entry.endedAt == nil ? LeoTheme.green : LeoTheme.green.opacity(0.16)).frame(width: 10, height: 10)
@@ -191,13 +217,16 @@ struct ContentView: View {
                                 .labelStyle(.iconOnly)
                                 .buttonStyle(.borderless)
                                 .help("Edit session time")
+                                .pointingHandCursor()
                             if entry.endedAt != nil {
                                 Button("Continue", systemImage: "play.fill") { store.continueSession(from: entry) }
                                     .labelStyle(.iconOnly)
                                     .buttonStyle(.borderless)
                                     .disabled(store.isTracking)
                                     .help("Continue with the same session name")
+                                    .pointingHandCursor(!store.isTracking)
                                 Button("Delete", systemImage: "trash", role: .destructive) { entryToDelete = entry }.labelStyle(.iconOnly).buttonStyle(.borderless).help("Delete session")
+                                    .pointingHandCursor()
                             }
                         }.padding(.vertical, 12)
                     }
@@ -211,7 +240,7 @@ struct ContentView: View {
             Label(title, systemImage: icon).frame(maxWidth: .infinity, alignment: .leading).padding(10)
                 .background(selection == title ? LeoTheme.green : .clear, in: RoundedRectangle(cornerRadius: 10))
                 .foregroundStyle(selection == title ? .white : .primary)
-        }.buttonStyle(.plain)
+        }.buttonStyle(.plain).pointingHandCursor()
     }
 
     private func metric(_ title: String, value: String, icon: String) -> some View {
@@ -224,13 +253,14 @@ struct ContentView: View {
     }
 
     private func beginEditing(_ entry: TimeEntry) {
+        editTask = entry.task
         editStartedAt = entry.startedAt
         editEndedAt = entry.endedAt ?? Date()
         entryToEdit = entry
     }
 
     private var dailyDurations: [Date: TimeInterval] {
-        Dictionary(grouping: store.entries, by: { Calendar.current.startOfDay(for: $0.startedAt) })
+        Dictionary(grouping: store.reportEntries, by: { Calendar.current.startOfDay(for: $0.startedAt) })
             .mapValues { $0.reduce(0) { $0 + $1.duration } }
     }
 
@@ -249,8 +279,8 @@ struct ContentView: View {
             else { return [] }
             return days(from: interval.start, to: end)
         case .all:
-            guard let first = store.entries.map(\.startedAt).min(),
-                  let last = store.entries.map(\.startedAt).max()
+            guard let first = store.reportEntries.map(\.startedAt).min(),
+                  let last = store.reportEntries.map(\.startedAt).max()
             else { return [] }
             return days(from: calendar.startOfDay(for: first), to: calendar.startOfDay(for: last))
         }

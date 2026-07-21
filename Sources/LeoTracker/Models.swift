@@ -2,6 +2,7 @@ import Foundation
 
 struct TimeEntry: Identifiable, Hashable, Sendable {
     let id: Int64
+    var projectID: Int64
     var project: String
     var task: String
     var startedAt: Date
