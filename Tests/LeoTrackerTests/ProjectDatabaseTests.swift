@@ -30,6 +30,36 @@ final class ProjectDatabaseTests: XCTestCase {
         XCTAssertFalse(try database.fetchProjects().contains(project))
     }
 
+    func testExportColumnsPersistInDatabase() throws {
+        let database = try makeDatabase()
+
+        try database.saveExportColumns([.project, .hours, .amount])
+
+        XCTAssertEqual(try database.fetchExportColumns(), [.project, .hours, .amount])
+    }
+
+    func testDefaultProjectPersistsInDatabase() throws {
+        let database = try makeDatabase()
+        let project = try database.insertProject(name: "Default")
+
+        try database.saveDefaultProjectID(project.id)
+
+        XCTAssertEqual(try database.fetchDefaultProjectID(), project.id)
+    }
+
+    func testFetchCanFilterEntriesByProjectInDatabase() throws {
+        let database = try makeDatabase()
+        let first = try database.insertProject(name: "First")
+        let second = try database.insertProject(name: "Second")
+        _ = try database.insert(projectID: first.id, task: "A", startedAt: Date(timeIntervalSince1970: 0))
+        _ = try database.insert(projectID: second.id, task: "B", startedAt: Date(timeIntervalSince1970: 10))
+
+        let entries = try database.fetch(projectID: second.id)
+
+        XCTAssertEqual(entries.map(\.task), ["B"])
+        XCTAssertEqual(entries.first?.projectID, second.id)
+    }
+
     private func makeDatabase() throws -> Database {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

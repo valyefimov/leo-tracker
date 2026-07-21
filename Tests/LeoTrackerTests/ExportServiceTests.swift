@@ -23,4 +23,13 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertEqual(ExportService.exportAmount(duration: 2.27 * 60 * 60, hourlyRate: 100), "225")
         XCTAssertEqual(ExportService.exportAmount(duration: 30 * 60, hourlyRate: 80.5), "40,25")
     }
+
+    func testCSVExportsSelectedColumnsOnly() {
+        let item = TimeEntry(id: 1, projectID: 1, project: "LeoTracker", projectHourlyRate: 100, task: "Build", startedAt: Date(timeIntervalSince1970: 0), endedAt: Date(timeIntervalSince1970: 60 * 60))
+        let result = ExportService.csv(entries: [item], columns: [.project, .hours, .amount])
+
+        XCTAssertTrue(result.hasPrefix("Project,Hours,Amount"))
+        XCTAssertTrue(result.contains("\"LeoTracker\",\"1\",\"100\""))
+        XCTAssertFalse(result.contains("Duration"))
+    }
 }

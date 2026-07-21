@@ -8,14 +8,21 @@ import UniformTypeIdentifiers
 final class TrackerStore: ObservableObject {
     @Published var task = ""
     @Published private(set) var entries: [TimeEntry] = []
+    @Published private(set) var reportEntries: [TimeEntry] = []
     @Published private(set) var projects: [Project] = []
     @Published var selectedProjectID: Int64?
-    @Published var reportProjectID: Int64?
+    @Published private(set) var defaultProjectID: Int64?
+    @Published var reportProjectID: Int64? {
+        didSet {
+            if oldValue != reportProjectID { reloadReport() }
+        }
+    }
     @Published private(set) var activeEntry: TimeEntry?
     @Published private(set) var now = Date()
     @Published var range: ReportRange = .week { didSet { reload() } }
     @Published var errorMessage: String?
     @Published var autoStopMessage: String?
+    @Published private(set) var exportColumns: [ExportColumn] = ExportColumn.allCases
     @Published var autoStopMinutes: Int {
         didSet { UserDefaults.standard.set(autoStopMinutes, forKey: Self.autoStopMinutesKey) }
     }
@@ -31,8 +38,9 @@ final class TrackerStore: ObservableObject {
                 .appendingPathComponent("LeoTracker", isDirectory: true)
             try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
             database = try Database(path: support.appendingPathComponent("tracker.sqlite").path)
-            let all = try database.fetch()
-            if let unfinished = all.first(where: { $0.endedAt == nil }) {
+            exportColumns = try database.fetchExportColumns()
+            defaultProjectID = try database.fetchDefaultProjectID()
+            if let unfinished = try database.fetchUnfinishedEntry() {
                 try database.stop(id: unfinished.id, endedAt: Date())
             }
         } catch {
@@ -47,10 +55,6 @@ final class TrackerStore: ObservableObject {
     var isTracking: Bool { activeEntry != nil }
     var elapsed: TimeInterval { activeEntry.map { now.timeIntervalSince($0.startedAt) } ?? 0 }
     var totalDuration: TimeInterval { entries.reduce(0) { $0 + $1.duration } }
-    var reportEntries: [TimeEntry] {
-        guard let reportProjectID else { return [] }
-        return entries.filter { $0.projectID == reportProjectID }
-    }
     var totalReportDuration: TimeInterval { reportEntries.reduce(0) { $0 + $1.duration } }
     var totalReportAmount: Double {
         reportEntries.reduce(0) { $0 + ExportService.roundedQuarterHours($1.duration) * $1.projectHourlyRate }
@@ -138,6 +142,7 @@ final class TrackerStore: ObservableObject {
             let project = try database.insertProject(name: cleanName, hourlyRate: hourlyRate)
             projects = try database.fetchProjects()
             selectedProjectID = project.id
+            if defaultProjectID == nil { setDefaultProject(id: project.id) }
             reportProjectID = project.id
         } catch { errorMessage = "Could not create project: \(error.localizedDescription)" }
     }
@@ -176,11 +181,80 @@ final class TrackerStore: ObservableObject {
             try database.deleteProject(id: project.id, fallbackProjectID: fallbackProjectID)
             if selectedProjectID == project.id { selectedProjectID = fallbackProjectID }
             if reportProjectID == project.id { reportProjectID = fallbackProjectID }
+            if defaultProjectID == project.id { setDefaultProject(id: fallbackProjectID) }
             reload()
         } catch { errorMessage = "Could not delete project: \(error.localizedDescription)" }
     }
 
-    func exportCSV(entries: [TimeEntry]) { save(data: Data(("\u{FEFF}" + ExportService.csv(entries: entries)).utf8), name: "leo-report.csv", type: "csv") }
+    func setDefaultProject(id projectID: Int64?) {
+        guard let projectID, projects.contains(where: { $0.id == projectID }) else {
+            errorMessage = "Select a valid default project."
+            return
+        }
+        do {
+            try database.saveDefaultProjectID(projectID)
+            defaultProjectID = projectID
+            if !isTracking { selectedProjectID = projectID }
+        } catch { errorMessage = "Could not save default project: \(error.localizedDescription)" }
+    }
+
+    func setExportColumn(_ column: ExportColumn, isEnabled: Bool) {
+        var selected = exportColumns
+        if isEnabled {
+            if !selected.contains(column) { selected.append(column) }
+        } else {
+            selected.removeAll { $0 == column }
+        }
+        selected = ExportColumn.allCases.filter { selected.contains($0) }
+        guard !selected.isEmpty else {
+            errorMessage = "Select at least one export column."
+            return
+        }
+        do {
+            try database.saveExportColumns(selected)
+            exportColumns = selected
+        } catch { errorMessage = "Could not save export settings: \(error.localizedDescription)" }
+    }
+
+    func exportCSV(entries: [TimeEntry]) { save(data: Data(("\u{FEFF}" + ExportService.csv(entries: entries, columns: exportColumns)).utf8), name: "leo-report.csv", type: "csv") }
+
+    func exportAllData() {
+        do {
+            let backup = try database.exportBackup()
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            let data = try encoder.encode(backup)
+            save(data: data, name: "leo-tracker-backup.json", type: "json")
+        } catch { errorMessage = "Could not export backup: \(error.localizedDescription)" }
+    }
+
+    func importAllData() {
+        guard !isTracking else {
+            errorMessage = "Stop the active session before importing a backup."
+            return
+        }
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let data = try Data(contentsOf: url)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            let backup = try decoder.decode(LeoTrackerBackup.self, from: data)
+            guard backup.version == 1 else {
+                errorMessage = "Unsupported backup version: \(backup.version)."
+                return
+            }
+            try database.importBackup(backup)
+            exportColumns = try database.fetchExportColumns()
+            defaultProjectID = try database.fetchDefaultProjectID()
+            activeEntry = nil
+            task = ""
+            reload()
+        } catch { errorMessage = "Could not import backup: \(error.localizedDescription)" }
+    }
 
     private func tick() {
         now = Date()
@@ -196,15 +270,28 @@ final class TrackerStore: ObservableObject {
     private func reload() {
         do {
             projects = try database.fetchProjects()
+            if defaultProjectID == nil || !projects.contains(where: { $0.id == defaultProjectID }) {
+                if let firstProjectID = projects.first?.id {
+                    try database.saveDefaultProjectID(firstProjectID)
+                    defaultProjectID = firstProjectID
+                }
+            }
             if selectedProjectID == nil || !projects.contains(where: { $0.id == selectedProjectID }) {
-                selectedProjectID = projects.first?.id
+                selectedProjectID = defaultProjectID ?? projects.first?.id
             }
             if reportProjectID == nil || !projects.contains(where: { $0.id == reportProjectID }) {
                 reportProjectID = selectedProjectID ?? projects.first?.id
             }
             entries = try database.fetch(from: range.startDate())
+            reloadReport()
         }
         catch { errorMessage = error.localizedDescription }
+    }
+
+    private func reloadReport() {
+        do {
+            reportEntries = try database.fetch(from: range.startDate(), projectID: reportProjectID)
+        } catch { errorMessage = error.localizedDescription }
     }
 
     private func save(data: Data, name: String, type: String) {

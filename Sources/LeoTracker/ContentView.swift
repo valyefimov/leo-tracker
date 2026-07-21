@@ -246,6 +246,26 @@ struct ContentView: View {
                 }
                 Card {
                     VStack(alignment: .leading, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Default project").font(.headline)
+                            Text("Used as the selected project when the app starts and when no active session is running.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Picker("Default project", selection: Binding(
+                            get: { store.defaultProjectID },
+                            set: { store.setDefaultProject(id: $0) }
+                        )) {
+                            ForEach(store.projects) { project in
+                                Text(project.name).tag(Optional(project.id))
+                            }
+                        }
+                        .frame(maxWidth: 320)
+                        .pointingHandCursor()
+                    }
+                }
+                Card {
+                    VStack(alignment: .leading, spacing: 16) {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Projects").font(.headline)
@@ -276,7 +296,7 @@ struct ContentView: View {
                                         .frame(width: 22)
                                     VStack(alignment: .leading, spacing: 4) {
                                         Text(project.name).fontWeight(.medium).textSelection(.enabled)
-                                        Text("\(project.id == store.selectedProjectID ? "Selected for tracking" : "Available project") · \(project.hourlyRate.moneyText)/h")
+                                        Text(projectSubtitle(project))
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                     }
@@ -294,6 +314,26 @@ struct ContentView: View {
                                         .pointingHandCursor(store.projects.count > 1 && store.activeEntry?.projectID != project.id)
                                 }
                                 .padding(.vertical, 12)
+                            }
+                        }
+                    }
+                }
+                Card {
+                    VStack(alignment: .leading, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Export columns").font(.headline)
+                            Text("Choose which columns are included in CSV exports. Saved in the local database.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 12) {
+                            ForEach(ExportColumn.allCases) { column in
+                                Toggle(column.title, isOn: Binding(
+                                    get: { store.exportColumns.contains(column) },
+                                    set: { store.setExportColumn(column, isEnabled: $0) }
+                                ))
+                                .toggleStyle(.checkbox)
+                                .pointingHandCursor()
                             }
                         }
                     }
@@ -392,6 +432,15 @@ struct ContentView: View {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return 0 }
         return Double(clean.replacingOccurrences(of: ",", with: "."))
+    }
+
+    private func projectSubtitle(_ project: Project) -> String {
+        var parts: [String] = []
+        if project.id == store.defaultProjectID { parts.append("Default") }
+        if project.id == store.selectedProjectID { parts.append("Selected for tracking") }
+        if parts.isEmpty { parts.append("Available project") }
+        parts.append("\(project.hourlyRate.moneyText)/h")
+        return parts.joined(separator: " · ")
     }
 
     private var dailyDurations: [Date: TimeInterval] {

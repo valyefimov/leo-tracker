@@ -20,6 +20,34 @@ struct Project: Identifiable, Hashable, Sendable {
     var hourlyRate: Double
 }
 
+enum ExportColumn: String, CaseIterable, Identifiable, Sendable {
+    case date
+    case project
+    case task
+    case started
+    case ended
+    case hours
+    case rate
+    case amount
+    case duration
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .date: "Date"
+        case .project: "Project"
+        case .task: "Task"
+        case .started: "Started"
+        case .ended: "Ended"
+        case .hours: "Hours"
+        case .rate: "Rate/hour"
+        case .amount: "Amount"
+        case .duration: "Duration"
+        }
+    }
+}
+
 enum ReportRange: String, CaseIterable, Identifiable {
     case today = "Today"
     case week = "This Week"
@@ -60,4 +88,31 @@ extension Double {
     var moneyText: String {
         String(format: "%.2f", self).replacingOccurrences(of: ".", with: ",")
     }
+}
+
+struct LeoTrackerBackup: Codable, Sendable {
+    var version: Int
+    var exportedAt: Date
+    var projects: [BackupProject]
+    var entries: [BackupTimeEntry]
+    var settings: [BackupSetting]
+}
+
+struct BackupProject: Codable, Sendable {
+    var id: Int64
+    var name: String
+    var hourlyRate: Double
+}
+
+struct BackupTimeEntry: Codable, Sendable {
+    var id: Int64
+    var projectID: Int64
+    var task: String
+    var startedAt: Date
+    var endedAt: Date?
+}
+
+struct BackupSetting: Codable, Sendable {
+    var key: String
+    var value: String
 }

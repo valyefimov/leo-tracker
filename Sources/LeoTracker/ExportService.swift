@@ -1,22 +1,13 @@
 import Foundation
 
 enum ExportService {
-    static func csv(entries: [TimeEntry]) -> String {
+    static func csv(entries: [TimeEntry], columns: [ExportColumn] = ExportColumn.allCases) -> String {
         let formatter = ISO8601DateFormatter()
+        let exportColumns = normalized(columns)
         let rows = entries.map { entry in
-            [
-                csvDate(entry.startedAt),
-                escape(entry.project),
-                escape(entry.task),
-                formatter.string(from: entry.startedAt),
-                entry.endedAt.map(formatter.string(from:)) ?? "",
-                escape(exportHours(entry.duration)),
-                escape(formatDecimal(entry.projectHourlyRate)),
-                escape(exportAmount(duration: entry.duration, hourlyRate: entry.projectHourlyRate)),
-                entry.duration.clockText
-            ].joined(separator: ",")
+            exportColumns.map { value(for: $0, entry: entry, formatter: formatter) }.joined(separator: ",")
         }
-        return (["Date,Project,Task,Started,Ended,Hours,Rate/hour,Amount,Duration"] + rows).joined(separator: "\n")
+        return ([exportColumns.map(\.title).joined(separator: ",")] + rows).joined(separator: "\n")
     }
 
     static func exportHours(_ duration: TimeInterval) -> String {
@@ -40,6 +31,26 @@ enum ExportService {
             return String(format: "%.1f", roundedValue).replacingOccurrences(of: ".", with: ",")
         }
         return String(format: "%.2f", roundedValue).replacingOccurrences(of: ".", with: ",")
+    }
+
+    private static func normalized(_ columns: [ExportColumn]) -> [ExportColumn] {
+        let selected = Set(columns)
+        let ordered = ExportColumn.allCases.filter { selected.contains($0) }
+        return ordered.isEmpty ? ExportColumn.allCases : ordered
+    }
+
+    private static func value(for column: ExportColumn, entry: TimeEntry, formatter: ISO8601DateFormatter) -> String {
+        switch column {
+        case .date: csvDate(entry.startedAt)
+        case .project: escape(entry.project)
+        case .task: escape(entry.task)
+        case .started: formatter.string(from: entry.startedAt)
+        case .ended: entry.endedAt.map(formatter.string(from:)) ?? ""
+        case .hours: escape(exportHours(entry.duration))
+        case .rate: escape(formatDecimal(entry.projectHourlyRate))
+        case .amount: escape(exportAmount(duration: entry.duration, hourlyRate: entry.projectHourlyRate))
+        case .duration: entry.duration.clockText
+        }
     }
 
     private static func dateOnly(_ date: Date) -> String { formatted(date, format: "yyyy-MM-dd") }
