@@ -2,7 +2,7 @@
 
 <img width="1146" height="674" alt="image" src="https://github.com/user-attachments/assets/5ab3863a-b52c-4fc3-8712-8cd0ab30a843" />
 
-Native macOS time tracker built with SwiftUI. Sessions are stored locally in SQLite. The app supports project-based tracking, hourly rates with currency, configurable auto-stop, project reports, CSV export, and full JSON backup import/export.
+Native macOS time tracker built with SwiftUI. Sessions are stored locally in SQLite. The app supports project-based tracking, hourly rates with currency, configurable auto-stop, project sessions, CSV export, and full JSON backup import/export.
 
 ## Features
 
@@ -13,9 +13,9 @@ Native macOS time tracker built with SwiftUI. Sessions are stored locally in SQL
 - Deleting a project also deletes all sessions for that project.
 - Set a default project for new tracking sessions.
 - Configure auto-stop inactivity timeout.
-- View reports by selected project and period.
-- See report totals, calendar hours by day, amount, sessions, and average session time.
-- Export reports to CSV with quarter-hour billing units:
+- View sessions by selected project and period.
+- See session totals, calendar hours by day, amount, session count, and average session time.
+- Export sessions to CSV with quarter-hour billing units:
   - `15 min = 0,25`
   - `30 min = 0,5`
   - `45 min = 0,75`

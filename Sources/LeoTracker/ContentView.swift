@@ -34,7 +34,7 @@ struct ContentView: View {
                 }.padding(.bottom, 18)
 
                 navItem("Tracker", icon: "stopwatch.fill")
-                navItem("Reports", icon: "chart.bar.xaxis")
+                navItem("Sessions", icon: "list.bullet.rectangle")
                 navItem("Settings", icon: "gearshape.fill")
                 Spacer()
                 Label("Data stays on this Mac", systemImage: "lock.fill")
@@ -45,7 +45,7 @@ struct ContentView: View {
         } detail: {
             Group {
                 switch selection {
-                case "Reports": AnyView(reports)
+                case "Sessions": AnyView(sessions)
                 case "Settings": AnyView(settings)
                 default: AnyView(tracker)
                 }
@@ -205,19 +205,19 @@ struct ContentView: View {
                         }.font(.callout).foregroundStyle(.secondary)
                     }
                 }
-                sessionsList(entries: store.entries)
+                sessionsList(entries: todayEntries)
             }.padding(34).frame(maxWidth: 880)
         }
     }
 
-    private var reports: some View {
+    private var sessions: some View {
         let reportEntries = store.reportEntries
         return ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 HStack {
                     VStack(alignment: .leading, spacing: 5) {
-                        Text("Reports").font(.system(size: 30, weight: .bold, design: .rounded))
-                        Text("Review time and export data for billing.").foregroundStyle(.secondary)
+                        Text("Sessions").font(.system(size: 30, weight: .bold, design: .rounded))
+                        Text("Review project sessions and export data for billing.").foregroundStyle(.secondary)
                     }
                     Spacer()
                     Menu("Export", systemImage: "square.and.arrow.up") {
@@ -253,7 +253,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 22) {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Settings").font(.system(size: 30, weight: .bold, design: .rounded))
-                    Text("Manage projects used for tracking and reports.").foregroundStyle(.secondary)
+                    Text("Manage projects used for tracking and sessions.").foregroundStyle(.secondary)
                 }
                 Card {
                     VStack(alignment: .leading, spacing: 16) {
@@ -492,6 +492,10 @@ struct ContentView: View {
     private var dailyDurations: [Date: TimeInterval] {
         Dictionary(grouping: store.reportEntries, by: { Calendar.current.startOfDay(for: $0.startedAt) })
             .mapValues { $0.reduce(0) { $0 + $1.duration } }
+    }
+
+    private var todayEntries: [TimeEntry] {
+        store.entries.filter { Calendar.current.isDateInToday($0.startedAt) }
     }
 
     private var reportCalendarDays: [Date] {

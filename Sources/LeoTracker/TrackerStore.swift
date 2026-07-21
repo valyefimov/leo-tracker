@@ -239,7 +239,7 @@ final class TrackerStore: ObservableObject {
         } catch { errorMessage = "Could not save export settings: \(error.localizedDescription)" }
     }
 
-    func exportCSV(entries: [TimeEntry]) { save(data: Data(("\u{FEFF}" + ExportService.csv(entries: entries, columns: exportColumns)).utf8), name: "leo-report.csv", type: "csv") }
+    func exportCSV(entries: [TimeEntry]) { save(data: Data(("\u{FEFF}" + ExportService.csv(entries: entries, columns: exportColumns)).utf8), name: "leo-sessions.csv", type: "csv") }
 
     func exportAllData() {
         do {
